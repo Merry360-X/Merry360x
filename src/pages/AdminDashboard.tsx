@@ -21,6 +21,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatMoney } from "@/lib/money";
 import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import {
   PAWAPAY_PROCESSING_FEE_PERCENT,
   calculatePawaPayProcessing,
   calculateBookingFinancialsFromDiscountedListing,
@@ -551,6 +560,8 @@ export default function AdminDashboard() {
   const [adminFxRatesSaving, setAdminFxRatesSaving] = useState(false);
   const [adminFxRatesUpdatedAt, setAdminFxRatesUpdatedAt] = useState<string | null>(null);
 
+  const [analyticsRange, setAnalyticsRange] = useState<"1h" | "24h" | "7d" | "30d">("24h");
+
   useEffect(() => {
     const urlTab = new URLSearchParams(location.search).get("tab");
     if (!isAdminTabValue(urlTab)) return;
@@ -751,6 +762,75 @@ export default function AdminDashboard() {
     refetchOnWindowFocus: true,
     placeholderData: (previousData) => previousData, // Keep showing old data while refetching
   });
+
+  type LiveWebAnalyticsRow = {
+    live_visitors: number;
+    live_hosts: number;
+    live_guests: number;
+    failed_attempts: number;
+  };
+
+  type WebAnalyticsSeriesRow = {
+    bucket: string;
+    page_views: number;
+    failed_attempts: number;
+  };
+
+  const {
+    data: liveWebAnalytics,
+    isLoading: isLiveWebAnalyticsLoading,
+  } = useQuery({
+    queryKey: ["admin_web_analytics_live"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("admin_web_analytics_live", { window_minutes: 15 });
+      if (error) throw error;
+      return (data?.[0] ?? null) as LiveWebAnalyticsRow | null;
+    },
+    staleTime: 1000 * 10,
+    gcTime: 1000 * 60 * 5,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+    placeholderData: (previousData) => previousData,
+  });
+
+  const {
+    data: webAnalyticsSeries = [],
+    isLoading: isWebAnalyticsSeriesLoading,
+  } = useQuery({
+    queryKey: ["admin_web_analytics_series", analyticsRange],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("admin_web_analytics_series", { p_range: analyticsRange });
+      if (error) throw error;
+      return (data ?? []) as WebAnalyticsSeriesRow[];
+    },
+    staleTime: 1000 * 30,
+    gcTime: 1000 * 60 * 10,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    placeholderData: (previousData) => previousData,
+  });
+
+  const webAnalyticsChartConfig = useMemo<ChartConfig>(
+    () => ({
+      page_views: { label: "Page views", color: "hsl(var(--primary))" },
+      failed_attempts: { label: "Failed attempts", color: "hsl(var(--destructive))" },
+    }),
+    [],
+  );
+
+  const formatAnalyticsBucket = useCallback(
+    (iso: string) => {
+      const d = new Date(iso);
+      if (analyticsRange === "7d" || analyticsRange === "30d") {
+        return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      }
+      if (analyticsRange === "24h") {
+        return d.toLocaleTimeString(undefined, { hour: "2-digit" });
+      }
+      return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    },
+    [analyticsRange],
+  );
 
   const { data: adBanners = [], refetch: refetchAdBanners, isLoading: isAdsLoading } = useQuery({
     queryKey: ["admin_ad_banners"],
@@ -3611,6 +3691,110 @@ For support, contact: support@merry360x.com
                     <p className="text-2xl font-bold text-primary">{formatMoney(adminPaidFinancialOverview.totalAmountAfterPawapay, "RWF")}</p>
                   </Card>
         </div>
+
+            <Card className="p-4 mb-6">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+                <div>
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <Activity className="w-4 h-4" /> Live Traffic
+                  </h3>
+                  <p className="text-xs text-muted-foreground">Live counts are last 15 minutes</p>
+                </div>
+
+                <div className="w-full md:w-[200px]">
+                  <Select value={analyticsRange} onValueChange={(value) => setAnalyticsRange(value as any)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Range" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1h">Last 1 hour</SelectItem>
+                      <SelectItem value="24h">Last 24 hours</SelectItem>
+                      <SelectItem value="7d">Last 7 days</SelectItem>
+                      <SelectItem value="30d">Last 30 days</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div className="rounded-lg border p-3">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                    <Users className="w-4 h-4" />
+                    <span className="text-sm">Visitors</span>
+                  </div>
+                  <p className="text-2xl font-bold text-foreground">
+                    {isLiveWebAnalyticsLoading ? "—" : liveWebAnalytics?.live_visitors ?? 0}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                    <Home className="w-4 h-4" />
+                    <span className="text-sm">Hosts</span>
+                  </div>
+                  <p className="text-2xl font-bold text-foreground">
+                    {isLiveWebAnalyticsLoading ? "—" : liveWebAnalytics?.live_hosts ?? 0}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                    <User className="w-4 h-4" />
+                    <span className="text-sm">Guests</span>
+                  </div>
+                  <p className="text-2xl font-bold text-foreground">
+                    {isLiveWebAnalyticsLoading ? "—" : liveWebAnalytics?.live_guests ?? 0}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span className="text-sm">Failed attempts</span>
+                  </div>
+                  <p className="text-2xl font-bold text-destructive">
+                    {isLiveWebAnalyticsLoading ? "—" : liveWebAnalytics?.failed_attempts ?? 0}
+                  </p>
+                </div>
+              </div>
+
+              <ChartContainer config={webAnalyticsChartConfig} className="w-full">
+                <AreaChart data={webAnalyticsSeries} margin={{ left: 12, right: 12, top: 8, bottom: 0 }}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="bucket"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    minTickGap={24}
+                    tickFormatter={formatAnalyticsBucket}
+                  />
+                  <YAxis tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} />
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                  <Area
+                    dataKey="page_views"
+                    type="monotone"
+                    stroke="var(--color-page_views)"
+                    fill="var(--color-page_views)"
+                    fillOpacity={0.2}
+                    strokeWidth={2}
+                  />
+                  <Area
+                    dataKey="failed_attempts"
+                    type="monotone"
+                    stroke="var(--color-failed_attempts)"
+                    fill="var(--color-failed_attempts)"
+                    fillOpacity={0.12}
+                    strokeWidth={2}
+                  />
+                  <ChartLegend content={<ChartLegendContent />} />
+                </AreaChart>
+              </ChartContainer>
+
+              {(isWebAnalyticsSeriesLoading || isLiveWebAnalyticsLoading) && (
+                <div className="mt-3 text-xs text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Refreshing analytics…</span>
+                </div>
+              )}
+            </Card>
 
             <Card className="p-4 mb-6">
               <h3 className="font-semibold mb-2 flex items-center gap-2">

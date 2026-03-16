@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 import "./i18n";
+import { trackClientError } from "@/lib/web-analytics";
 
 // Suppress AbortError from console - these are expected during navigation and component cleanup
 // This prevents "Uncaught (in promise) AbortError" from cluttering the console
@@ -85,13 +86,19 @@ if (typeof window !== "undefined") {
       event.preventDefault();
       return;
     }
+
+    void trackClientError(error, "unhandledrejection");
   });
 
   window.addEventListener("error", (event) => {
     if (isDynamicImportFailure(event.error || event.message)) {
       event.preventDefault();
       reloadOnceForChunkFailure();
+      void trackClientError(event.error || event.message, "chunk_load");
+      return;
     }
+
+    void trackClientError(event.error || event.message, "window_error");
   });
 }
 

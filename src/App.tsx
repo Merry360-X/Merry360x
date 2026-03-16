@@ -3,7 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { PreferencesProvider } from "@/contexts/PreferencesProvider";
 import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -11,6 +11,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Index from "./pages/Index";
 import RequireAuth from "@/components/RequireAuth";
 import RequireRole from "@/components/RequireRole";
+import { setWebAnalyticsContext, startWebAnalyticsHeartbeat, trackPageView } from "@/lib/web-analytics";
 
 // Lazy load dashboard pages to prevent circular dependencies
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
@@ -417,6 +418,24 @@ function RouteSeoManager() {
   return null;
 }
 
+function WebAnalyticsManager() {
+  const location = useLocation();
+  const { user, isHost } = useAuth();
+
+  useEffect(() => {
+    const roleCategory = user ? (isHost ? "host" : "guest") : "visitor";
+    setWebAnalyticsContext({ userId: user?.id ?? null, roleCategory });
+    startWebAnalyticsHeartbeat(60_000);
+  }, [user?.id, isHost]);
+
+  useEffect(() => {
+    const path = location.pathname + location.search;
+    void trackPageView(path);
+  }, [location.pathname, location.search]);
+
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
@@ -434,6 +453,7 @@ const App = () => (
               <SupportCenterLauncher />
             </Suspense>
             <RouteSeoManager />
+            <WebAnalyticsManager />
             <RoutePrefetch />
             <Suspense fallback={<RouteLoadingFallback />}>
             <RouteTransitionWrapper>
