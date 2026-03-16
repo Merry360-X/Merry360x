@@ -226,7 +226,7 @@ if (flwRef && (String(processorResponse).toLowerCase().includes("pending") || ch
 
 const verifiedDirect = await flwGet(`/transactions/verify_by_reference?tx_ref=${encodeURIComponent(txRef)}`);
 
-const appVerifyRes = await fetch(`${baseUrl}/api/flutterwave-verify-payment?checkoutId=${encodeURIComponent(checkout.id)}&tx_ref=${encodeURIComponent(txRef)}`);
+const appVerifyRes = await fetch(`${baseUrl}/api/flutterwave?action=verify-payment&checkoutId=${encodeURIComponent(checkout.id)}&tx_ref=${encodeURIComponent(txRef)}`);
 const appVerify = await appVerifyRes.json().catch(() => ({}));
 
 const { data: checkoutAfter } = await supabase

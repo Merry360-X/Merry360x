@@ -164,10 +164,11 @@ export default function PaymentFailed() {
       if (isPesapal) {
         const redirectUrl = `${window.location.origin}/payment-pending?checkoutId=${encodeURIComponent(checkoutId)}&provider=pesapal`;
 
-        const cardInitResponse = await fetch("/api/pesapal-create-payment", {
+        const cardInitResponse = await fetch("/api/pesapal", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            action: "create-payment",
             checkoutId,
             amount: Math.round(totalAmount),
             currency,
@@ -203,10 +204,11 @@ export default function PaymentFailed() {
       if (isFlutterwave) {
         const redirectUrl = `${window.location.origin}/payment-pending?checkoutId=${encodeURIComponent(checkoutId)}&provider=flutterwave`;
 
-        const cardInitResponse = await fetch("/api/flutterwave-create-payment", {
+        const cardInitResponse = await fetch("/api/flutterwave", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            action: "create-payment",
             checkoutId,
             amount: Math.round(totalAmount),
             currency,

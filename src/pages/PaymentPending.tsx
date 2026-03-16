@@ -73,7 +73,9 @@ export default function PaymentPending() {
             if (transactionId) verifyParams.set("transaction_id", transactionId);
             if (txRef) verifyParams.set("tx_ref", txRef);
 
-            const response = await fetch(`/api/flutterwave-verify-payment?${verifyParams.toString()}`);
+            verifyParams.set("action", "verify-payment");
+
+            const response = await fetch(`/api/flutterwave?${verifyParams.toString()}`);
             const data = await response.json();
 
             if (data.success) {
@@ -91,10 +93,11 @@ export default function PaymentPending() {
 
         if (provider === "pesapal") {
           try {
-            const response = await fetch("/api/pesapal-check-status", {
+            const response = await fetch("/api/pesapal", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
+                action: "check-status",
                 checkoutId: checkoutId || "",
               }),
             });

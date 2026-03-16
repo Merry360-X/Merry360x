@@ -72,10 +72,11 @@ if (insertError || !checkout?.id) {
   process.exit(2);
 }
 
-const initRes = await fetch(`${baseUrl}/api/flutterwave-create-payment`, {
+const initRes = await fetch(`${baseUrl}/api/flutterwave`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
+    action: "create-payment",
     checkoutId: checkout.id,
     amount: 1000,
     currency: "RWF",

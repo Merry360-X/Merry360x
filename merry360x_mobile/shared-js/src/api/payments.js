@@ -19,10 +19,10 @@ export function createPaymentsApi(client, config = {}) {
 
   return {
     createFlutterwavePayment(payload) {
-      return postJson('/api/flutterwave-create-payment', payload);
+      return postJson('/api/flutterwave', { action: 'create-payment', ...payload });
     },
     verifyFlutterwavePayment(payload) {
-      return postJson('/api/flutterwave-verify-payment', payload);
+      return postJson('/api/flutterwave', { action: 'verify-payment', ...payload });
     },
     createPawaPayPayment(payload) {
       return postJson('/api/pawapay-create-payment', payload);

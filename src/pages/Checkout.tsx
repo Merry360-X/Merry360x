@@ -1231,10 +1231,11 @@ export default function CheckoutNew() {
       if (paymentMethod === 'card') {
         const redirectUrl = `${window.location.origin}/payment-pending?checkoutId=${encodeURIComponent(checkoutId)}&provider=pesapal`;
 
-        const cardInitResponse = await fetch("/api/pesapal-create-payment", {
+        const cardInitResponse = await fetch("/api/pesapal", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            action: "create-payment",
             checkoutId,
             amount: roundToCurrency(amountInRwf, 'RWF'),
             currency: 'RWF',
