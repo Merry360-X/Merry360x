@@ -928,7 +928,7 @@ export default function PropertyDetails() {
     if (!primary) return [] as string[];
 
     return primary
-      .split(/[,\-]/)
+      .split(/[,-]/)
       .map((part) => part.trim())
       .filter(Boolean)
       .slice(0, 2);
@@ -953,7 +953,7 @@ export default function PropertyDetails() {
       let toursData: Array<Record<string, unknown>> = [];
       const toursPrimary = await supabase
         .from("tours")
-        .select("id, title, location, duration_days, max_guests, price_per_person, currency, images")
+        .select("id, title, location, duration_days, max_group_size, price_per_person, currency, images")
         .eq("is_published", true)
         .order("created_at", { ascending: false })
         .limit(24);
@@ -1007,7 +1007,7 @@ export default function PropertyDetails() {
         title: t.title,
         location: t.location,
         duration_days: Number((t as { duration_days?: number | null }).duration_days || 0) || null,
-        max_guests: Number((t as { max_guests?: number | null }).max_guests || 0) || null,
+        max_guests: Number((t as { max_group_size?: number | null }).max_group_size || 0) || null,
         price_per_person: t.price_per_person,
         currency: t.currency,
         images: t.images,
