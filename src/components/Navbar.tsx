@@ -344,7 +344,7 @@ const Navbar = () => {
                 variant="outline"
                 size="sm"
                 className="gap-2 px-3 relative"
-                onClick={() => navigate("/admin")}
+                onClick={() => navigate("/admin?tab=overview")}
                 type="button"
               >
                 <Shield className="w-4 h-4" />
@@ -485,7 +485,7 @@ const Navbar = () => {
                     {t("actions.favorites")}
                   </DropdownMenuItem>
                   {isAdmin && (
-                    <DropdownMenuItem onClick={() => navigate("/admin")} className="relative">
+                    <DropdownMenuItem onClick={() => navigate("/admin?tab=overview")} className="relative">
                       <Shield className="w-4 h-4 mr-2" />
                       {t("actions.adminDashboard")}
                       {openTicketsCount > 0 && (
@@ -747,7 +747,7 @@ const Navbar = () => {
                         className="w-full justify-start gap-2"
                         onClick={() => {
                           setMobileMenuOpen(false);
-                          navigate("/admin");
+                          navigate("/admin?tab=overview");
                         }}
                       >
                         Admin dashboard
