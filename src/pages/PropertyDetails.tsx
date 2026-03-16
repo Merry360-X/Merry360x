@@ -385,7 +385,8 @@ export default function PropertyDetails() {
 
       return base.map((r) => {
         const profile = r.reviewer_id ? profilesByKey.get(String(r.reviewer_id)) : undefined;
-        const reviewerName = profile?.full_name || profile?.nickname || "Guest";
+        const firstName = (profile?.full_name || "").trim().split(/\s+/).filter(Boolean)[0] || "";
+        const reviewerName = firstName || profile?.nickname || "Guest";
         return {
           ...r,
           reviewer_name: reviewerName,
