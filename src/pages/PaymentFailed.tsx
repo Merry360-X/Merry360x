@@ -34,7 +34,8 @@ export default function PaymentFailed() {
   // Map failure reasons to user-friendly messages
   const getFailureInfo = () => {
     const reasonLower = reason.toLowerCase();
-    const isCardFlow = providerParam === "flutterwave";
+    const isCardFlow = providerParam === "flutterwave" || providerParam === "pesapal";
+    const cardProviderLabel = providerParam === "pesapal" ? "Pesapal" : "Flutterwave";
     
     if (reasonLower.includes("insufficient") || reasonLower.includes("funds") || reasonLower.includes("balance")) {
       return {
@@ -60,7 +61,7 @@ export default function PaymentFailed() {
         title: "Payment Cancelled",
         message: "The payment was cancelled or declined.",
         suggestions: [
-          isCardFlow ? "Make sure your card details are correct on Flutterwave" : "Make sure you entered the correct PIN",
+          isCardFlow ? `Make sure your card details are correct on ${cardProviderLabel}` : "Make sure you entered the correct PIN",
           isCardFlow ? "Check with your bank for any card restrictions" : "Check your mobile money app for any restrictions",
           isCardFlow ? "Try another card or payment method" : "Contact your mobile money provider if the issue persists",
         ],
@@ -75,7 +76,7 @@ export default function PaymentFailed() {
         title: "Payment Timeout",
         message: "The payment took too long to complete.",
         suggestions: [
-          isCardFlow ? "Complete the payment on Flutterwave without leaving the page for too long" : "Make sure to approve the payment promptly when you receive the prompt",
+          isCardFlow ? `Complete the payment on ${cardProviderLabel} without leaving the page for too long` : "Make sure to approve the payment promptly when you receive the prompt",
           isCardFlow ? "Retry and complete any OTP/3DS prompt quickly" : "Check if you received the mobile money prompt on your phone",
           "Ensure you have good network connection",
         ],
@@ -109,7 +110,7 @@ export default function PaymentFailed() {
         ? getFriendlyPaymentErrorMessage(reason, "We couldn't process your payment. Please try again.")
         : "We couldn't process your payment. Please try again.",
       suggestions: [
-        isCardFlow ? "Try again and complete payment on Flutterwave" : "Check your mobile money account balance",
+        isCardFlow ? `Try again and complete payment on ${cardProviderLabel}` : "Check your mobile money account balance",
         "Ensure you have good network connection",
         "Try again in a few moments",
       ],
@@ -157,7 +158,47 @@ export default function PaymentFailed() {
       const phoneNumber = checkout.phone;
       const totalAmount = checkout.total_amount;
 
+      const isPesapal = providerParam === "pesapal" || String(paymentProvider).toUpperCase() === "PESAPAL";
       const isFlutterwave = providerParam === "flutterwave" || String(paymentProvider).toUpperCase() === "FLUTTERWAVE";
+
+      if (isPesapal) {
+        const redirectUrl = `${window.location.origin}/payment-pending?checkoutId=${encodeURIComponent(checkoutId)}&provider=pesapal`;
+
+        const cardInitResponse = await fetch("/api/pesapal-create-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            checkoutId,
+            amount: Math.round(totalAmount),
+            currency,
+            payerName: checkout.name,
+            payerEmail: checkout.email,
+            phoneNumber: phoneNumber || undefined,
+            description: `Merry360x Booking Retry - ${checkoutId.slice(0, 8)}`,
+            redirectUrl,
+          }),
+        });
+
+        const cardInitData = await cardInitResponse.json().catch(() => ({}));
+        if (!cardInitResponse.ok || !cardInitData?.redirectUrl) {
+          const friendlyError = getFriendlyPaymentErrorMessage(cardInitData?.message);
+          toast({
+            title: "Payment Failed",
+            description: friendlyError || "Could not retry card payment. Please try again.",
+            variant: "destructive",
+          });
+          setIsRetrying(false);
+          return;
+        }
+
+        toast({
+          title: "Redirecting to card checkout",
+          description: "Complete your card payment on Pesapal.",
+        });
+
+        window.location.href = cardInitData.redirectUrl;
+        return;
+      }
 
       if (isFlutterwave) {
         const redirectUrl = `${window.location.origin}/payment-pending?checkoutId=${encodeURIComponent(checkoutId)}&provider=flutterwave`;

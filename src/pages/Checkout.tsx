@@ -1102,7 +1102,7 @@ export default function CheckoutNew() {
           total_participants: hasGroupBooking ? tourParticipants : 1,
           group_total: hasGroupBooking ? total : null,
           payment_provider: (() => {
-            if (paymentMethod === 'card') return 'FLUTTERWAVE';
+            if (paymentMethod === 'card') return 'PESAPAL';
             if (paymentMethod === 'bank') return 'BANK_TRANSFER';
             const methodInfo = PAWAPAY_METHODS.find(m => m.id === paymentMethod);
             return methodInfo?.provider || paymentMethod.toUpperCase();
@@ -1229,9 +1229,9 @@ export default function CheckoutNew() {
       }
 
       if (paymentMethod === 'card') {
-        const redirectUrl = `${window.location.origin}/payment-pending?checkoutId=${encodeURIComponent(checkoutId)}&provider=flutterwave`;
+        const redirectUrl = `${window.location.origin}/payment-pending?checkoutId=${encodeURIComponent(checkoutId)}&provider=pesapal`;
 
-        const cardInitResponse = await fetch("/api/flutterwave-create-payment", {
+        const cardInitResponse = await fetch("/api/pesapal-create-payment", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1251,7 +1251,7 @@ export default function CheckoutNew() {
         });
 
         const cardInitData = await cardInitResponse.json().catch(() => ({}));
-        if (!cardInitResponse.ok || !cardInitData?.link) {
+        if (!cardInitResponse.ok || !cardInitData?.redirectUrl) {
           throw new Error(cardInitData?.error || cardInitData?.message || 'Unable to initialize card payment');
         }
 
@@ -1261,10 +1261,10 @@ export default function CheckoutNew() {
 
         toast({
           title: "Redirecting to secure card checkout",
-          description: "Complete your payment on Flutterwave to confirm your booking.",
+          description: "Complete your payment on Pesapal to confirm your booking.",
         });
 
-        window.location.href = cardInitData.link;
+        window.location.href = cardInitData.redirectUrl;
         return;
       }
 
@@ -1761,9 +1761,9 @@ export default function CheckoutNew() {
                   {/* Card checkout redirect info */}
                   {paymentMethod === 'card' && (
                     <div className="rounded-xl border border-border bg-card p-4 md:p-5 space-y-4">
-                      <p className="text-sm font-semibold text-foreground">Pay with card on Flutterwave</p>
+                      <p className="text-sm font-semibold text-foreground">Pay with card on Pesapal</p>
                       <p className="text-sm text-muted-foreground">
-                        Click <span className="font-medium">Review Booking</span> and then <span className="font-medium">Confirm Booking</span>. You will be redirected to Flutterwave to securely enter your card details and complete payment.
+                        Click <span className="font-medium">Review Booking</span> and then <span className="font-medium">Confirm Booking</span>. You will be redirected to Pesapal to securely enter your card details and complete payment.
                       </p>
                     </div>
                   )}
@@ -1911,7 +1911,7 @@ export default function CheckoutNew() {
                             {(paymentMethod === 'card' || paymentMethod === 'bank') && (
                               <p className="text-sm text-muted-foreground">
                                 {paymentMethod === 'card'
-                                  ? 'Redirect to Flutterwave secure card checkout'
+                                  ? 'Redirect to Pesapal secure card checkout'
                                   : 'Agent will call you'}
                               </p>
                             )}
@@ -1932,7 +1932,7 @@ export default function CheckoutNew() {
                           </p>
                           <p className="text-amber-600 dark:text-amber-400">
                             {paymentMethod === 'card'
-                              ? <>After clicking "Confirm Booking", you will be redirected to <span className="font-medium">Flutterwave</span> to enter card details and pay securely.</>
+                              ? <>After clicking "Confirm Booking", you will be redirected to <span className="font-medium">Pesapal</span> to enter card details and pay securely.</>
                               : <>After clicking "Confirm Booking", our payment team will call you at <span className="font-medium">{formData.email}</span> to complete your bank transfer payment securely.</>}
                           </p>
                           <div className="mt-2 pt-2 border-t border-amber-200 dark:border-amber-800/50 space-y-1">

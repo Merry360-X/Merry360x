@@ -40,6 +40,9 @@ export default function PaymentPending() {
   const provider = (params.get("provider") || "pawapay").toLowerCase();
   const txRef = params.get("tx_ref") || params.get("txRef");
   const transactionId = params.get("transaction_id") || params.get("transactionId");
+
+  const isCardProvider = provider === "flutterwave" || provider === "pesapal";
+  const cardProviderLabel = provider === "pesapal" ? "Pesapal" : "Flutterwave";
   
   const [status, setStatus] = useState<"pending" | "completed" | "failed">("pending");
   const [pollCount, setPollCount] = useState(0);
@@ -86,8 +89,32 @@ export default function PaymentPending() {
           }
         }
 
+        if (provider === "pesapal") {
+          try {
+            const response = await fetch("/api/pesapal-check-status", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                checkoutId: checkoutId || "",
+              }),
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (data.success) {
+              paymentStatus = data.paymentStatus;
+              if (data.paymentStatus === "failed") {
+                failureMsg = data.providerStatus
+                  ? `Card payment ${String(data.providerStatus).toLowerCase()}`
+                  : "Card payment was not completed";
+              }
+            }
+          } catch (err) {
+            console.warn("Pesapal status check error:", err);
+          }
+        }
+
         // Check PawaPay API directly for real-time status
-        if (provider !== "flutterwave" && depositId) {
+        if (provider !== "flutterwave" && provider !== "pesapal" && depositId) {
           try {
             const response = await fetch(`/api/pawapay-check-status?depositId=${depositId}&checkoutId=${checkoutId}`);
             const data = await response.json();
@@ -283,7 +310,7 @@ export default function PaymentPending() {
             <>
               <h1 className="text-2xl font-light mb-2">Waiting for Payment</h1>
               <p className="text-muted-foreground mb-6">
-                {provider === "flutterwave"
+                {isCardProvider
                   ? "Complete your card payment on the secure checkout page"
                   : "Check your phone and enter your PIN to approve the payment"}
               </p>
@@ -306,9 +333,9 @@ export default function PaymentPending() {
                   <Smartphone className="w-5 h-5 text-primary mt-0.5" />
                   <div className="text-left">
                     <p className="font-medium mb-2">
-                      {provider === "flutterwave" ? "Complete your card payment:" : "Complete payment on your phone:"}
+                      {isCardProvider ? "Complete your card payment:" : "Complete payment on your phone:"}
                     </p>
-                    {provider === "flutterwave" ? (
+                    {isCardProvider ? (
                       <ol className="space-y-1 text-muted-foreground">
                         <li>1. Enter your card details securely</li>
                         <li>2. Complete any required OTP/3DS step</li>
@@ -349,8 +376,8 @@ export default function PaymentPending() {
                 }
               </p>
               <p className="text-sm text-muted-foreground mb-8">
-                {provider === "flutterwave"
-                  ? "Please return to checkout and try card payment again on Flutterwave."
+                {isCardProvider
+                  ? `Please return to checkout and try card payment again on ${cardProviderLabel}.`
                   : "Please return to checkout to try again with a different payment method or ensure sufficient balance."}
               </p>
               
