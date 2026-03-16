@@ -407,6 +407,17 @@ export default async function handler(req, res) {
   try {
     const action = safeStr(req.body?.action, 40);
 
+    if (action === "health") {
+      await getPesapalToken();
+      return json(res, 200, {
+        success: true,
+        provider: "pesapal",
+        status: "ok",
+        baseUrl: PESAPAL_BASE_URL,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     if (action === "create-payment") {
       return await handleCreatePayment(req, res);
     }
