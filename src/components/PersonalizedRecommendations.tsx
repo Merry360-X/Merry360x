@@ -15,6 +15,7 @@ interface RecommendationsProps {
   title?: string;
   className?: string;
   mode?: 'personalized' | 'popular';
+  locationFilter?: string;
 }
 
 export function PersonalizedRecommendations({
@@ -23,6 +24,7 @@ export function PersonalizedRecommendations({
   title,
   className = '',
   mode = 'personalized',
+  locationFilter,
 }: RecommendationsProps) {
   const { user } = useAuth();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -43,19 +45,31 @@ export function PersonalizedRecommendations({
       const shouldLoadProperties = type === 'properties' || type === 'all';
       const shouldLoadTours = type === 'tours' || type === 'all';
 
+      const normalizedLocationFilter = (locationFilter || "").trim().toLowerCase();
+      const propertyFetchLimit = shouldLoadProperties && normalizedLocationFilter ? Math.max(limit, 50) : limit;
+
       const [propertyRecs, tourRecs] = await Promise.all([
-        shouldLoadProperties ? recommendationEngine.getPropertyRecommendations(limit) : Promise.resolve([]),
+        shouldLoadProperties ? recommendationEngine.getPropertyRecommendations(propertyFetchLimit) : Promise.resolve([]),
         shouldLoadTours ? recommendationEngine.getTourRecommendations(limit) : Promise.resolve([]),
       ]);
 
-      setProperties(propertyRecs);
+      const filteredProperties = normalizedLocationFilter
+        ? propertyRecs
+            .filter((item: any) => {
+              const locationText = String(item?.location || item?.city || "").toLowerCase();
+              return locationText.includes(normalizedLocationFilter);
+            })
+            .slice(0, limit)
+        : propertyRecs;
+
+      setProperties(filteredProperties);
       setTours(tourRecs);
     } catch (err) {
       console.error('[PersonalizedRecommendations] Failed to initialize:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id, type, limit, mode]);
+  }, [user?.id, type, limit, mode, locationFilter]);
 
   useEffect(() => {
     initializeEngine();

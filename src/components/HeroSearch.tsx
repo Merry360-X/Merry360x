@@ -200,7 +200,11 @@ const fetchDestinationSuggestions = async (search: string) => {
   return Array.from(new Set(finalResults)).slice(0, 20);
 };
 
-const HeroSearch = () => {
+type HeroSearchProps = {
+  onWhereChange?: (value: string) => void;
+};
+
+const HeroSearch = ({ onWhereChange }: HeroSearchProps) => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -226,6 +230,11 @@ const HeroSearch = () => {
 
   const nearbyLabel = t("heroSearch.nearbyLabel");
   const whereDisplay = where.trim() === NEARBY_LABEL ? nearbyLabel : where;
+
+  const setWhereValue = (value: string) => {
+    setWhere(value);
+    onWhereChange?.(value === NEARBY_LABEL ? "" : value);
+  };
 
   const guestsLabel = useMemo(() => {
     const total = adults + children + infants;
@@ -433,7 +442,7 @@ const HeroSearch = () => {
                     <Search className="w-5 h-5 text-muted-foreground" />
                     <input
                       value={where}
-                      onChange={(e) => setWhere(e.target.value)}
+                      onChange={(e) => setWhereValue(e.target.value)}
                       placeholder={t("heroSearch.wherePlaceholder")}
                       className="w-full bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
                     />
@@ -451,7 +460,7 @@ const HeroSearch = () => {
                           key={loc}
                           type="button"
                           onClick={() => {
-                            setWhere(loc);
+                            setWhereValue(loc);
                             if (loc === NEARBY_LABEL) {
                               goMobileSearch();
                               return;
@@ -501,7 +510,7 @@ const HeroSearch = () => {
                   type="button"
                   className="text-sm text-muted-foreground underline"
                   onClick={() => {
-                    setWhere("");
+                    setWhereValue("");
                     setDateRange(undefined);
                     setDateFlexDays(0);
                     setAdults(1);
@@ -709,7 +718,7 @@ const HeroSearch = () => {
                   <CommandInput
                     placeholder={t("heroSearch.wherePlaceholder")}
                     value={where}
-                    onValueChange={(v) => setWhere(v)}
+                    onValueChange={(v) => setWhereValue(v)}
                   />
                   <CommandList>
                     <CommandEmpty>
@@ -721,7 +730,7 @@ const HeroSearch = () => {
                           key={loc}
                           value={loc}
                           onSelect={() => {
-                            setWhere(loc);
+                            setWhereValue(loc);
                             setOpenWhere(false);
                             if (loc === NEARBY_LABEL) {
                               goSearch();

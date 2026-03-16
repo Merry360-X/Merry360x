@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import HeroSearch from "@/components/HeroSearch";
@@ -75,6 +75,15 @@ const Index = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [activeStoryModalIndex, setActiveStoryModalIndex] = useState<number | null>(null);
+  const [stayCityInput, setStayCityInput] = useState("");
+  const [stayCity, setStayCity] = useState("");
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setStayCity(stayCityInput.trim());
+    }, 250);
+    return () => window.clearTimeout(handle);
+  }, [stayCityInput]);
 
   const { data: popularTours = [], isLoading: isPopularToursLoading } = useQuery({
     queryKey: ["home-popular-tours"],
@@ -335,7 +344,7 @@ const Index = () => {
               </h1>
 
               {/* Search Bar */}
-              <HeroSearch />
+              <HeroSearch onWhereChange={setStayCityInput} />
 
               {/* Referral CTA */}
               <div className="mt-6 md:mt-8 flex justify-center">
@@ -380,7 +389,13 @@ const Index = () => {
       </section>
 
       <section className="container mx-auto px-4 pt-10 pb-16">
-        <PersonalizedRecommendations type="properties" limit={8} mode="popular" title="Popular Stays" />
+        <PersonalizedRecommendations
+          type="properties"
+          limit={20}
+          mode="popular"
+          title="Popular Stays"
+          locationFilter={stayCity}
+        />
       </section>
 
       <section className="container mx-auto px-4 pb-16">
