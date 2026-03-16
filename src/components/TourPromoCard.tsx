@@ -41,6 +41,7 @@ export default function TourPromoCard(props: TourPromoCardProps) {
   const displayPrice = formatMoney(converted ?? baseAmount, converted !== null ? preferredCurrency : from);
   // Determine item type - use source if provided, default to 'tour'
   const itemType = props.source === 'tour_packages' ? 'tour_package' : 'tour';
+  const itemLabel = props.source === 'tour_packages' ? 'Package' : 'Tour';
   
   // Check if host is verified (only when hostId is provided)
   const { data: hostVerified } = useQuery({
@@ -73,6 +74,11 @@ export default function TourPromoCard(props: TourPromoCardProps) {
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-muted via-muted/70 to-muted/40" />
           )}
+
+          <span className="absolute top-1.5 md:top-3 left-1.5 md:left-3 px-1.5 md:px-3 py-0.5 md:py-1 rounded-full bg-background/90 backdrop-blur-sm text-[8px] md:text-xs font-medium">
+            {itemLabel}
+          </span>
+
           {/* Desktop: Add to Trip button */}
           <Button
             type="button"

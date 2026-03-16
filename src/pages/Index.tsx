@@ -95,14 +95,14 @@ const Index = () => {
           .eq("is_published", true)
           .order("rating", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false })
-          .limit(8),
+          .limit(12),
         supabase
           .from("tour_packages")
           .select("id, title, city, country, price_per_adult, currency, cover_image, gallery_images, rating, review_count, category, duration, host_id, pricing_tiers")
           .eq("status", "approved")
           .order("rating", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false })
-          .limit(8),
+          .limit(12),
       ]);
 
       const tours: HomeTour[] = (toursRes.data ?? []).map((tour: any) => ({
@@ -151,7 +151,7 @@ const Index = () => {
               : null,
       }));
 
-      return [...tours, ...packages].slice(0, 8);
+      return [...tours, ...packages].slice(0, 12);
     },
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 20,
@@ -409,31 +409,32 @@ const Index = () => {
 
         {isPopularToursLoading ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="h-64 rounded-xl bg-muted animate-pulse" />
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i} className={`h-64 rounded-xl bg-muted animate-pulse ${i >= 6 ? "hidden md:block" : ""}`} />
             ))}
           </div>
         ) : popularTours.length > 0 ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {popularTours.map((tour) => (
-              <TourPromoCard
-                key={tour.id}
-                id={tour.id}
-                title={tour.title}
-                location={tour.location}
-                price={tour.price}
-                currency={tour.currency}
-                images={tour.images}
-                rating={tour.rating}
-                reviewCount={tour.reviewCount}
-                category={tour.category}
-                durationDays={tour.durationDays}
-                source={tour.source}
-                hostId={tour.hostId}
-                pricingModel={tour.pricingModel}
-                pricingDurationValue={tour.pricingDurationValue}
-                pricingDurationUnit={tour.pricingDurationUnit}
-              />
+            {popularTours.map((tour, index) => (
+              <div key={tour.id} className={index >= 6 ? "hidden md:block" : ""}>
+                <TourPromoCard
+                  id={tour.id}
+                  title={tour.title}
+                  location={tour.location}
+                  price={tour.price}
+                  currency={tour.currency}
+                  images={tour.images}
+                  rating={tour.rating}
+                  reviewCount={tour.reviewCount}
+                  category={tour.category}
+                  durationDays={tour.durationDays}
+                  source={tour.source}
+                  hostId={tour.hostId}
+                  pricingModel={tour.pricingModel}
+                  pricingDurationValue={tour.pricingDurationValue}
+                  pricingDurationUnit={tour.pricingDurationUnit}
+                />
+              </div>
             ))}
           </div>
         ) : (
