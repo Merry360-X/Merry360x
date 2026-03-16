@@ -23,7 +23,7 @@ import ListingImageCarousel from "@/components/ListingImageCarousel";
 import ImageGallery from "@/components/ImageGallery";
 import { formatMoney } from "@/lib/money";
 import { convertAmount } from "@/lib/fx";
-import { getTourBillingQuantity, getTourPriceSuffix, getTourPricingModel } from "@/lib/tour-pricing";
+import { getTourBillingQuantity, getTourPerPersonUnitPrice, getTourPriceSuffix, getTourPricingModel } from "@/lib/tour-pricing";
 import { useFxRates } from "@/hooks/useFxRates";
 import { usePreferences } from "@/hooks/usePreferences";
 import { useTripCart } from "@/hooks/useTripCart";
@@ -262,7 +262,12 @@ export default function TourDetails() {
     );
   }, [selectedDurationKey, timePricingTiers]);
 
-  const effectiveTourPrice = selectedDurationTier?.price ?? Number(normalizedPrice ?? 0);
+  const effectiveTourPrice = selectedDurationTier?.price ?? getTourPerPersonUnitPrice(
+    pricingModel,
+    pricingMetadata,
+    participants,
+    Number(normalizedPrice ?? 0)
+  );
 
   // Support pricing tiers for both regular tours and tour packages
   const pricingTiers = ((): Array<{ group_size: number; price_per_person: number }> => {
