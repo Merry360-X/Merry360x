@@ -333,13 +333,64 @@ export default function PropertyDetails() {
       const property = String(data?.id ?? "");
       const { data: reviews, error } = await supabase
         .from("property_reviews")
-        .select("id, rating, comment, created_at")
+        .select("id, reviewer_id, rating, comment, created_at")
         .eq("property_id", property)
         .or("is_hidden.eq.false,is_hidden.is.null")
         .order("created_at", { ascending: false })
         .limit(3);
       if (error) throw error;
-      return (reviews ?? []) as Array<{ id: string; rating: number; comment: string | null; created_at: string }>;
+
+      const base = (reviews ?? []) as Array<{
+        id: string;
+        reviewer_id: string | null;
+        rating: number;
+        comment: string | null;
+        created_at: string;
+      }>;
+
+      const reviewerIds = Array.from(
+        new Set(base.map((r) => String(r.reviewer_id || "")).filter(Boolean))
+      );
+
+      const profilesByKey = new Map<string, { full_name: string | null; nickname?: string | null }>();
+
+      if (reviewerIds.length > 0) {
+        const { data: profilesByUserId } = await supabase
+          .from("profiles")
+          .select("user_id, full_name, nickname")
+          .in("user_id", reviewerIds);
+
+        (profilesByUserId ?? []).forEach((p: any) => {
+          const key = String(p?.user_id || "");
+          if (!key) return;
+          profilesByKey.set(key, { full_name: p?.full_name ?? null, nickname: p?.nickname ?? null });
+        });
+
+        const missing = reviewerIds.filter((id) => !profilesByKey.has(id));
+        if (missing.length > 0) {
+          const { data: profilesById } = await supabase
+            .from("profiles")
+            .select("id, user_id, full_name, nickname")
+            .in("id", missing);
+
+          (profilesById ?? []).forEach((p: any) => {
+            const idKey = String(p?.id || "");
+            const userKey = String(p?.user_id || "");
+            const payload = { full_name: p?.full_name ?? null, nickname: p?.nickname ?? null };
+            if (idKey && !profilesByKey.has(idKey)) profilesByKey.set(idKey, payload);
+            if (userKey && !profilesByKey.has(userKey)) profilesByKey.set(userKey, payload);
+          });
+        }
+      }
+
+      return base.map((r) => {
+        const profile = r.reviewer_id ? profilesByKey.get(String(r.reviewer_id)) : undefined;
+        const reviewerName = profile?.full_name || profile?.nickname || "Guest";
+        return {
+          ...r,
+          reviewer_name: reviewerName,
+        };
+      }) as Array<{ id: string; reviewer_id: string | null; rating: number; comment: string | null; created_at: string; reviewer_name: string }>;
     },
   });
 
@@ -1702,17 +1753,20 @@ export default function PropertyDetails() {
                     {topReviews.map((r) => (
                       <div key={r.id} className="border border-border rounded-lg p-4">
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <Star
-                                key={star}
-                                className={`w-4 h-4 ${
-                                  star <= r.rating
-                                    ? "fill-yellow-400 text-yellow-400"
-                                    : "fill-gray-200 text-gray-200 dark:fill-gray-700 dark:text-gray-700"
-                                }`}
-                              />
-                            ))}
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <Star
+                                  key={star}
+                                  className={`w-4 h-4 ${
+                                    star <= r.rating
+                                      ? "fill-yellow-400 text-yellow-400"
+                                      : "fill-gray-200 text-gray-200 dark:fill-gray-700 dark:text-gray-700"
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                            <span className="text-sm font-medium text-foreground">{r.reviewer_name}</span>
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {new Date(r.created_at).toLocaleDateString()}
