@@ -77,7 +77,7 @@ export function roundToCurrency(amount: number, currency: string): number {
 // Official exchange rates from BNR (National Bank of Rwanda)
 // Using AVERAGE rates: How much RWF per 1 unit of foreign currency
 // Source: National Bank of Rwanda - currency table provided by user (06-Feb-26)
-const FIXED_RATES: FxRates = {
+export const DEFAULT_FX_RATES: FxRates = {
   // Base currency
   RWF: 1,
   
@@ -184,8 +184,8 @@ export const CURRENCY_NAMES: Record<string, string> = {
 export { PAYMENT_CURRENCIES } from "./currencies";
 
 export async function getUsdRates(): Promise<FxRates | null> {
-  // Return fixed rates - no API call needed
-  return FIXED_RATES;
+  // Return default fallback rates.
+  return DEFAULT_FX_RATES;
 }
 
 /**
@@ -209,7 +209,7 @@ export function convertAmount(amount: number, from: string, to: string, usdRates
   if (f === t) return roundToCurrency(a, t);
   
   // Merge provided rates over fixed rates so conversion still works if rates are null/partial/empty.
-  const rates = { ...FIXED_RATES, ...(usdRates ?? {}) };
+  const rates = { ...DEFAULT_FX_RATES, ...(usdRates ?? {}) };
   const rf = rates[f];
   const rt = rates[t];
   if (!rf || !rt) return null;
@@ -250,7 +250,7 @@ export function convertAmountWithAudit(
 } {
   const f = String(from || "RWF").toUpperCase();
   const t = String(to || "RWF").toUpperCase();
-  const rates = { ...FIXED_RATES, ...(usdRates ?? {}) };
+  const rates = { ...DEFAULT_FX_RATES, ...(usdRates ?? {}) };
   
   // Calculate the effective rate (from -> to)
   let rateUsed: number | null = null;

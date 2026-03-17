@@ -17,7 +17,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { formatMoney } from "@/lib/money";
 import { getTourPriceSuffix, getTourPricingModel } from "@/lib/tour-pricing";
 import { logError, uiErrorMessage } from "@/lib/ui-errors";
-import { convertAmount } from "@/lib/fx";
+import { convertAmount, DEFAULT_FX_RATES } from "@/lib/fx";
+import { useFxRates } from "@/hooks/useFxRates";
 import { Eye, Download, FileText, DollarSign, AlertCircle } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
 
@@ -142,21 +143,16 @@ type Metrics = {
   revenue_by_currency: Array<{ currency: string; amount: number }>;
 };
 
-const STAFF_FX_TO_RWF: Record<string, number> = {
-  USD: 1455.5,
-  EUR: 1716.76225,
-  GBP: 1972.4936,
-  CNY: 209.732456,
-  KES: 11.283036,
-  UGX: 0.408996,
-  TZS: 0.563279,
-  AED: 396.323917,
+let runtimeStaffFxToRwf: Record<string, number> = { ...DEFAULT_FX_RATES };
+
+const setRuntimeStaffFxToRwf = (rates: Record<string, number>) => {
+  runtimeStaffFxToRwf = { ...DEFAULT_FX_RATES, ...rates, RWF: 1 };
 };
 
 const toRwfAmount = (amount: number, currency: string | null | undefined): number => {
   const safeAmount = Number.isFinite(Number(amount)) ? Number(amount) : 0;
   const code = String(currency || "RWF").toUpperCase();
-  return convertAmount(safeAmount, code, "RWF", STAFF_FX_TO_RWF) ?? 0;
+  return convertAmount(safeAmount, code, "RWF", runtimeStaffFxToRwf) ?? 0;
 };
 
 const convertStaffCurrency = (
@@ -167,7 +163,7 @@ const convertStaffCurrency = (
   const from = String(fromCurrency || "RWF").toUpperCase();
   const to = String(toCurrency || "RWF").toUpperCase();
   const safeAmount = Number.isFinite(Number(amount)) ? Number(amount) : 0;
-  return convertAmount(safeAmount, from, to, STAFF_FX_TO_RWF) ?? 0;
+  return convertAmount(safeAmount, from, to, runtimeStaffFxToRwf) ?? 0;
 };
 
 const fetchPending = async () => {
@@ -195,6 +191,7 @@ const statusColors: Record<string, string> = {
 export default function StaffDashboard() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { usdRates } = useFxRates();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<
     "overview" | "applications" | "users" | "accommodations" | "tours" | "transport"
@@ -218,6 +215,12 @@ export default function StaffDashboard() {
   const [tourDetailsOpen, setTourDetailsOpen] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<TransportVehicleRow | null>(null);
   const [vehicleDetailsOpen, setVehicleDetailsOpen] = useState(false);
+
+  useEffect(() => {
+    if (usdRates) {
+      setRuntimeStaffFxToRwf(usdRates);
+    }
+  }, [usdRates]);
 
   const {
     data: applications = [],
