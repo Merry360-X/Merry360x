@@ -492,6 +492,9 @@ export default function HostDashboard() {
     pendingRwf: 0,
     completedRwf: 0,
   });
+
+  // Manual adjustments to host earnings (e.g. admin credits)
+  const [earningsAdjustmentsRwf, setEarningsAdjustmentsRwf] = useState(0);
   
   // Payout Methods (max 2)
   type PayoutMethod = {
@@ -1100,6 +1103,26 @@ export default function HostDashboard() {
     }
   }, [toRwfAmount]);
 
+  const fetchHostEarningsAdjustments = useCallback(async (hostId: string) => {
+    try {
+      const { data: rows, error } = await supabase
+        .from('host_earnings_adjustments')
+        .select('amount,currency')
+        .eq('host_id', hostId);
+
+      if (error) throw error;
+
+      const totalRwf = (rows || []).reduce((sum, row: any) => {
+        return sum + toRwfAmount(Number(row.amount || 0), row.currency || 'RWF');
+      }, 0);
+
+      setEarningsAdjustmentsRwf(totalRwf);
+    } catch (e) {
+      console.error('Failed to fetch host earnings adjustments:', e);
+      setEarningsAdjustmentsRwf(0);
+    }
+  }, [toRwfAmount]);
+
   const recalculateHostFinancials = useCallback(async () => {
     if (!user) return;
 
@@ -1107,8 +1130,9 @@ export default function HostDashboard() {
     await Promise.all([
       fetchData(),
       fetchHostPayoutData(user.id),
+      fetchHostEarningsAdjustments(user.id),
     ]);
-  }, [user, fetchData, fetchHostPayoutData]);
+  }, [user, fetchData, fetchHostPayoutData, fetchHostEarningsAdjustments]);
 
   useEffect(() => {
     if (!user) return;
@@ -1212,10 +1236,25 @@ export default function HostDashboard() {
       .subscribe();
     channels.push(payoutsChannel);
 
+    // Subscribe to earnings adjustments for this host
+    const adjustmentsChannel = supabase
+      .channel('host-earnings-adjustments-realtime')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'host_earnings_adjustments',
+        filter: `host_id=eq.${user.id}`,
+      }, () => {
+        console.log('[HostDashboard] Earnings adjustment change detected');
+        fetchHostEarningsAdjustments(user.id);
+      })
+      .subscribe();
+    channels.push(adjustmentsChannel);
+
     return () => {
       channels.forEach(channel => supabase.removeChannel(channel));
     };
-  }, [user, fetchData, fetchHostPayoutData]);
+  }, [user, fetchData, fetchHostPayoutData, fetchHostEarningsAdjustments]);
 
   // Track if we've already checked the profile on this page load
   const [profileChecked, setProfileChecked] = useState(false);
@@ -2948,8 +2987,8 @@ export default function HostDashboard() {
     return sum + toRwfAmount(hostNetAmount, bookingCurrency);
   }, 0);
   
-  // Keep totalEarnings as net earnings for display
-  const totalEarnings = totalNetEarnings;
+  // Keep totalEarnings as net earnings for display (plus any manual adjustments)
+  const totalEarnings = totalNetEarnings + earningsAdjustmentsRwf;
   const isPendingBookingStatus = (status: string | null | undefined) =>
     status === "pending" || status === "pending_confirmation";
   const bookingGroupKeys = new Set((bookings || []).map((b) => b.order_id || b.id));
