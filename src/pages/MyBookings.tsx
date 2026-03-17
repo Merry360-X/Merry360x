@@ -786,6 +786,40 @@ const MyBookings = () => {
     return groups;
   }, {});
 
+  const paymentCheckoutId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return (params.get("checkoutId") || "").trim();
+  }, [location.search]);
+
+  const cameFromPaymentConfirmation = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("payment") === "confirmed";
+  }, [location.search]);
+
+  const orderedBookingGroups = useMemo(() => {
+    const entries = Object.entries(groupedBookings);
+    if (!paymentCheckoutId) return entries;
+
+    const matchIndex = entries.findIndex(([groupKey, orderBookings]) => {
+      if (groupKey === paymentCheckoutId) return true;
+      return orderBookings.some((booking) => {
+        return booking.id === paymentCheckoutId || booking.order_id === paymentCheckoutId;
+      });
+    });
+
+    if (matchIndex <= 0) return entries;
+    const [matched] = entries.splice(matchIndex, 1);
+    return [matched, ...entries];
+  }, [groupedBookings, paymentCheckoutId]);
+
+  const paymentBookingFound = useMemo(() => {
+    if (!paymentCheckoutId) return false;
+    return orderedBookingGroups.some(([groupKey, orderBookings]) => {
+      if (groupKey === paymentCheckoutId) return true;
+      return orderBookings.some((booking) => booking.id === paymentCheckoutId || booking.order_id === paymentCheckoutId);
+    });
+  }, [orderedBookingGroups, paymentCheckoutId]);
+
   const getConfirmationUi = (booking: Booking) => {
     const status = booking.confirmation_status;
 
@@ -897,6 +931,18 @@ const MyBookings = () => {
         <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2">{t("bookings.title")}</h1>
         <p className="text-muted-foreground mb-8">{t("bookings.subtitle")}</p>
 
+        {cameFromPaymentConfirmation && paymentCheckoutId && (
+          <Alert className="mb-6 border-green-300 bg-green-50 dark:bg-green-950/20">
+            <AlertTriangle className="h-4 w-4 text-green-700" />
+            <AlertTitle className="text-green-800 dark:text-green-100">Payment Confirmed</AlertTitle>
+            <AlertDescription className="text-green-700 dark:text-green-200">
+              {paymentBookingFound
+                ? "Your paid booking is shown first below."
+                : "Your payment was confirmed. Booking list is refreshing."}
+            </AlertDescription>
+          </Alert>
+        )}
+
         {bookings.length === 0 ? (
           <div className="py-20 text-center">
             <Calendar className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
@@ -908,7 +954,7 @@ const MyBookings = () => {
           </div>
         ) : (
           <div className="space-y-6">
-            {Object.entries(groupedBookings).map(([orderId, orderBookings]) => {
+            {orderedBookingGroups.map(([orderId, orderBookings]) => {
               // All bookings in a group share the same status, dates, etc.
               const firstBooking = orderBookings[0];
               const isMultiItem = orderBookings.length > 1;

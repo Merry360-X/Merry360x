@@ -46,7 +46,6 @@ export default function PaymentPending() {
   
   const [status, setStatus] = useState<"pending" | "completed" | "failed">("pending");
   const [pollCount, setPollCount] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(300); // 5 minutes timeout
   const [failureReason, setFailureReason] = useState<string | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [amount, setAmount] = useState<number | null>(null);
@@ -161,10 +160,10 @@ export default function PaymentPending() {
           setStatus("completed");
           toast({
             title: "Payment Successful!",
-            description: "Redirecting to confirmation page...",
+            description: "Payment confirmed. Redirecting to My Bookings...",
           });
           setTimeout(() => {
-            navigate(`/booking-success?checkoutId=${checkoutId}&payment=confirmed`);
+            navigate(`/my-bookings?checkoutId=${encodeURIComponent(checkoutId || "")}&payment=confirmed`, { replace: true });
           }, 1500);
         } else if (isFailureStatus(paymentStatus || "")) {
           console.log("Payment failed:", paymentStatus, failureMsg);
@@ -209,39 +208,6 @@ export default function PaymentPending() {
 
     return () => clearInterval(interval);
   }, [checkoutId, depositId, provider, txRef, transactionId, status, pollCount, checkingStatus, amount, currency, navigate, toast]);
-
-  // Countdown timer with timeout handling
-  useEffect(() => {
-    if (status !== "pending" || timeLeft <= 0) return;
-
-    const timer = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t <= 1) {
-          // Timeout - redirect to failure page
-          setStatus("failed");
-          setFailureReason("Payment timeout - please try again");
-          const params = new URLSearchParams({
-            checkoutId: checkoutId || "",
-            reason: "Payment took too long to complete. Please try again.",
-            provider,
-          });
-          if (amount) params.set("amount", String(amount));
-          if (currency) params.set("currency", currency);
-          navigate(`/payment-failed?${params.toString()}`);
-          return 0;
-        }
-        return t - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [status, timeLeft, checkoutId, amount, currency, provider, navigate]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
 
   const handleRetry = () => {
     navigate("/checkout");
@@ -318,12 +284,6 @@ export default function PaymentPending() {
                   : "Check your phone and enter your PIN to approve the payment"}
               </p>
               
-              {/* Timer */}
-              <div className="mb-8">
-                <div className="text-4xl font-light tabular-nums">{formatTime(timeLeft)}</div>
-                <p className="text-sm text-muted-foreground mt-1">Time remaining</p>
-              </div>
-
               {/* Loading indicator */}
               <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -373,9 +333,7 @@ export default function PaymentPending() {
               <p className="text-muted-foreground mb-4">
                 {failureReason 
                   ? failureReason
-                  : timeLeft <= 0 
-                    ? "The payment request has expired."
-                    : "The payment was not completed."
+                  : "The payment was not completed."
                 }
               </p>
               <p className="text-sm text-muted-foreground mb-8">
