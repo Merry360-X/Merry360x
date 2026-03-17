@@ -1467,6 +1467,137 @@ export default function AdminDashboard() {
     return buckets.map((b) => ({ ...b, revenue_rwf: Math.round(b.revenue_rwf) }));
   }, [bookings, revenueAnalyticsRange]);
 
+  const adminAdvancedAnalytics = useMemo(() => {
+    const rows = (bookings as any[]) || [];
+
+    let totalBookings = 0;
+    let confirmedOrCompleted = 0;
+    let cancelled = 0;
+    let paidBookings = 0;
+    let paidRevenueRwf = 0;
+    let realizedRevenueRwf = 0;
+
+    let leadDaysSum = 0;
+    let leadDaysCount = 0;
+    let stayNightsSum = 0;
+    let stayNightsCount = 0;
+
+    const guestBookingCounts = new Map<string, number>();
+    const bookingTypeCounts = new Map<string, { count: number; revenueRwf: number }>();
+    const paymentMethodCounts = new Map<string, { count: number; revenueRwf: number }>();
+
+    for (const booking of rows) {
+      totalBookings += 1;
+
+      const status = String(booking?.status || "").toLowerCase();
+      const paymentStatus = String(booking?.payment_status || "").toLowerCase();
+      const isPaid = paymentStatus === "paid";
+      const isConfirmedOrCompleted = status === "confirmed" || status === "completed";
+
+      if (isConfirmedOrCompleted) confirmedOrCompleted += 1;
+      if (status === "cancelled") cancelled += 1;
+
+      const createdAt = booking?.created_at ? new Date(booking.created_at) : null;
+      const checkIn = booking?.check_in ? new Date(booking.check_in) : null;
+      const checkOut = booking?.check_out ? new Date(booking.check_out) : null;
+
+      if (createdAt && checkIn && Number.isFinite(createdAt.getTime()) && Number.isFinite(checkIn.getTime())) {
+        const diffDays = (checkIn.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+        if (Number.isFinite(diffDays) && diffDays >= 0) {
+          leadDaysSum += diffDays;
+          leadDaysCount += 1;
+        }
+      }
+
+      if (checkIn && checkOut && Number.isFinite(checkIn.getTime()) && Number.isFinite(checkOut.getTime())) {
+        const nights = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24);
+        if (Number.isFinite(nights) && nights > 0) {
+          stayNightsSum += nights;
+          stayNightsCount += 1;
+        }
+      }
+
+      const guestKey = String(
+        booking?.guest_id || booking?.guest_email || booking?.guest_name || ""
+      )
+        .trim()
+        .toLowerCase();
+      if (guestKey) {
+        guestBookingCounts.set(guestKey, (guestBookingCounts.get(guestKey) || 0) + 1);
+      }
+
+      const bookingType = String(
+        booking?.booking_type ||
+          (booking?.property_id ? "property" : booking?.tour_id ? "tour" : booking?.transport_id ? "transport" : "other")
+      ).toLowerCase();
+
+      const amount = Number(booking?.checkout_requests?.total_amount || booking?.total_price || 0);
+      const amountCurrency = String(
+        booking?.checkout_requests?.currency || booking?.currency || "RWF"
+      ).toUpperCase();
+      const amountRwf = toRwfAmount(amount, amountCurrency);
+
+      const typeEntry = bookingTypeCounts.get(bookingType) || { count: 0, revenueRwf: 0 };
+      typeEntry.count += 1;
+      if (isPaid && amountRwf > 0) {
+        typeEntry.revenueRwf += amountRwf;
+      }
+      bookingTypeCounts.set(bookingType, typeEntry);
+
+      if (isPaid) {
+        paidBookings += 1;
+        if (amountRwf > 0) paidRevenueRwf += amountRwf;
+
+        const paymentMethod = String(
+          booking?.checkout_requests?.payment_method || booking?.payment_method || "unknown"
+        ).toLowerCase();
+        const paymentEntry = paymentMethodCounts.get(paymentMethod) || { count: 0, revenueRwf: 0 };
+        paymentEntry.count += 1;
+        if (amountRwf > 0) paymentEntry.revenueRwf += amountRwf;
+        paymentMethodCounts.set(paymentMethod, paymentEntry);
+      }
+
+      if (isConfirmedOrCompleted && amountRwf > 0) {
+        realizedRevenueRwf += amountRwf;
+      }
+    }
+
+    const uniqueGuests = guestBookingCounts.size;
+    const repeatGuests = Array.from(guestBookingCounts.values()).filter((count) => count > 1).length;
+
+    const bookingTypeBreakdown = Array.from(bookingTypeCounts.entries())
+      .map(([type, data]) => ({
+        type,
+        count: data.count,
+        share: totalBookings > 0 ? (data.count / totalBookings) * 100 : 0,
+        revenueRwf: Math.round(data.revenueRwf),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const paymentMethodBreakdown = Array.from(paymentMethodCounts.entries())
+      .map(([method, data]) => ({
+        method,
+        count: data.count,
+        share: paidBookings > 0 ? (data.count / paidBookings) * 100 : 0,
+        revenueRwf: Math.round(data.revenueRwf),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      totalBookings,
+      confirmationRate: totalBookings > 0 ? (confirmedOrCompleted / totalBookings) * 100 : 0,
+      cancellationRate: totalBookings > 0 ? (cancelled / totalBookings) * 100 : 0,
+      paidRate: totalBookings > 0 ? (paidBookings / totalBookings) * 100 : 0,
+      avgLeadDays: leadDaysCount > 0 ? leadDaysSum / leadDaysCount : 0,
+      avgStayNights: stayNightsCount > 0 ? stayNightsSum / stayNightsCount : 0,
+      repeatGuestRate: uniqueGuests > 0 ? (repeatGuests / uniqueGuests) * 100 : 0,
+      paidRevenueRwf: Math.round(paidRevenueRwf),
+      realizedRevenueRwf: Math.round(realizedRevenueRwf),
+      bookingTypeBreakdown,
+      paymentMethodBreakdown,
+    };
+  }, [bookings]);
+
   const analyticsConfig = analyticsChart === "revenue" ? revenueChartConfig : webAnalyticsChartConfig;
   const analyticsChartData = analyticsChart === "revenue" ? analyticsRevenueSeries : webAnalyticsSeries;
   const isAnalyticsLoading =
@@ -4027,6 +4158,78 @@ For support, contact: support@merry360x.com
                   <span>Refreshing analytics…</span>
                 </div>
               )}
+            </Card>
+
+            <Card className="p-4 mb-6">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4" /> Advanced Business Analytics
+              </h3>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                <div className="rounded-lg border p-3 bg-muted/20">
+                  <p className="text-xs text-muted-foreground">Booking confirmation rate</p>
+                  <p className="text-2xl font-bold text-foreground">{adminAdvancedAnalytics.confirmationRate.toFixed(1)}%</p>
+                </div>
+                <div className="rounded-lg border p-3 bg-muted/20">
+                  <p className="text-xs text-muted-foreground">Cancellation rate</p>
+                  <p className="text-2xl font-bold text-destructive">{adminAdvancedAnalytics.cancellationRate.toFixed(1)}%</p>
+                </div>
+                <div className="rounded-lg border p-3 bg-muted/20">
+                  <p className="text-xs text-muted-foreground">Avg lead time</p>
+                  <p className="text-2xl font-bold text-foreground">{adminAdvancedAnalytics.avgLeadDays.toFixed(1)}d</p>
+                </div>
+                <div className="rounded-lg border p-3 bg-muted/20">
+                  <p className="text-xs text-muted-foreground">Repeat guest rate</p>
+                  <p className="text-2xl font-bold text-primary">{adminAdvancedAnalytics.repeatGuestRate.toFixed(1)}%</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm font-medium mb-2">Booking Type Mix</p>
+                  <div className="space-y-2">
+                    {adminAdvancedAnalytics.bookingTypeBreakdown.slice(0, 4).map((row) => (
+                      <div key={`type-${row.type}`}>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="capitalize">{row.type}</span>
+                          <span>{row.count} ({row.share.toFixed(1)}%)</span>
+                        </div>
+                        <div className="h-2 rounded bg-muted overflow-hidden">
+                          <div className="h-full bg-primary" style={{ width: `${Math.min(100, row.share)}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm font-medium mb-2">Paid Booking Method Mix</p>
+                  <div className="space-y-2">
+                    {adminAdvancedAnalytics.paymentMethodBreakdown.slice(0, 4).map((row) => (
+                      <div key={`pm-${row.method}`}>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="capitalize">{row.method.replaceAll("_", " ")}</span>
+                          <span>{row.count} ({row.share.toFixed(1)}%)</span>
+                        </div>
+                        <div className="h-2 rounded bg-muted overflow-hidden">
+                          <div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, row.share)}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                <div className="rounded-lg border p-3 bg-muted/10">
+                  <p className="text-xs text-muted-foreground">Paid GMV (RWF)</p>
+                  <p className="text-lg font-semibold text-foreground">{formatMoney(adminAdvancedAnalytics.paidRevenueRwf, "RWF")}</p>
+                </div>
+                <div className="rounded-lg border p-3 bg-muted/10">
+                  <p className="text-xs text-muted-foreground">Realized GMV (confirmed/completed)</p>
+                  <p className="text-lg font-semibold text-foreground">{formatMoney(adminAdvancedAnalytics.realizedRevenueRwf, "RWF")}</p>
+                </div>
+              </div>
             </Card>
 
             <Card className="p-4 mb-6">
