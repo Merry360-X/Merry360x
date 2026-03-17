@@ -608,6 +608,27 @@ export default function HostDashboard() {
     const converted = convertAmount(Number(amount) || 0, normalized, 'RWF', usdRates);
     return Number(converted ?? 0);
   }, [usdRates]);
+  const dashboardDisplayCurrency = useMemo(
+    () => String(preferredCurrency || 'RWF').toUpperCase(),
+    [preferredCurrency]
+  );
+  const toDashboardDisplayAmountFromRwf = useCallback((amountRwf: number) => {
+    const normalizedAmount = Number(amountRwf) || 0;
+    if (dashboardDisplayCurrency === 'RWF') return normalizedAmount;
+    const converted = convertAmount(normalizedAmount, 'RWF', dashboardDisplayCurrency, usdRates);
+    return Number(converted ?? 0);
+  }, [dashboardDisplayCurrency, usdRates]);
+  const formatDashboardMoneyFromRwf = useCallback((amountRwf: number) => {
+    return formatMoney(toDashboardDisplayAmountFromRwf(amountRwf), dashboardDisplayCurrency);
+  }, [toDashboardDisplayAmountFromRwf, dashboardDisplayCurrency]);
+  const formatDashboardMoney = useCallback((amount: number, currency?: string | null) => {
+    const sourceCurrency = String(currency || dashboardDisplayCurrency).toUpperCase();
+    if (sourceCurrency === dashboardDisplayCurrency) {
+      return formatMoney(Number(amount) || 0, dashboardDisplayCurrency);
+    }
+    const converted = convertAmount(Number(amount) || 0, sourceCurrency, dashboardDisplayCurrency, usdRates);
+    return formatMoney(Number(converted ?? 0), dashboardDisplayCurrency);
+  }, [dashboardDisplayCurrency, usdRates]);
   
   // Profile completion tracking
   const [hostProfile, setHostProfile] = useState<{
@@ -1447,7 +1468,7 @@ export default function HostDashboard() {
     }
 
     if (amount > availableForPayout) {
-      toast({ variant: 'destructive', title: 'Insufficient balance', description: `Maximum available: ${formatMoney(availableForPayout, 'RWF')}` });
+      toast({ variant: 'destructive', title: 'Insufficient balance', description: `Maximum available: ${formatDashboardMoneyFromRwf(availableForPayout)}` });
       return;
     }
 
@@ -3977,7 +3998,7 @@ export default function HostDashboard() {
                   ) : null}
                 </div>
                 <span className="text-primary font-bold text-sm">
-                  {formatMoney(cardPrice, property.currency || "RWF")} {isMonthlyOnly ? "per month" : "per night"}
+                  {formatDashboardMoney(cardPrice, property.currency || "RWF")} {isMonthlyOnly ? "per month" : "per night"}
                 </span>
               </div>
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -5052,7 +5073,7 @@ export default function HostDashboard() {
                   <div className="flex items-end">
                     <p className="text-xs text-green-700 pb-2">
                       {(form as any).national_discount_percent > 0 ? (
-                        <>National price: <strong>{formatMoney(form.price_per_person * (1 - ((form as any).national_discount_percent || 0) / 100), form.currency || "RWF")}</strong></>
+                        <>National price: <strong>{formatDashboardMoney(form.price_per_person * (1 - ((form as any).national_discount_percent || 0) / 100), form.currency || "RWF")}</strong></>
                       ) : (
                         "Set a discount for local visitors"
                       )}
@@ -5093,7 +5114,7 @@ export default function HostDashboard() {
 
                     return (
                       <>
-                        {formatMoney(form.price_per_person, form.currency || "RWF")}
+                        {formatDashboardMoney(form.price_per_person, form.currency || "RWF")}
                         <span className="text-xs text-muted-foreground font-normal ml-1">{suffix}</span>
                         {pricingDurationValue > 0 && pricingDurationUnit && (
                           <span className="text-xs text-muted-foreground font-normal ml-1">· {pricingDurationValue} {pricingDurationValue === 1 ? pricingDurationUnit : `${pricingDurationUnit}s`}</span>
@@ -5307,7 +5328,7 @@ export default function HostDashboard() {
                 <Badge variant="outline" className="text-xs">Driver included</Badge>
               )}
               <div className="flex items-center justify-between mt-3">
-                <span className="text-primary font-bold">{formatMoney(vehicle.price_per_day, vehicle.currency || "RWF")}/day</span>
+                <span className="text-primary font-bold">{formatDashboardMoney(vehicle.price_per_day, vehicle.currency || "RWF")}/day</span>
                 <div className="flex gap-1">
                   <Button
                     size="sm"
@@ -7498,8 +7519,10 @@ export default function HostDashboard() {
           </div>
                   <div className="flex-1">
                     <p className="text-sm text-muted-foreground">Available for payout</p>
-                    <p className="text-xl font-bold">{formatMoney(availableForPayout, "RWF")}</p>
-                    <p className="text-xs text-muted-foreground">≈ {formatMoney(convertAmount(availableForPayout, 'RWF', 'USD', usdRates) ?? 0, 'USD')}</p>
+                    <p className="text-xl font-bold">{formatDashboardMoneyFromRwf(availableForPayout)}</p>
+                    {dashboardDisplayCurrency !== 'RWF' && (
+                      <p className="text-xs text-muted-foreground">Base: {formatMoney(availableForPayout, 'RWF')}</p>
+                    )}
                   </div>
                 </div>
                 <Button 
@@ -7518,9 +7541,9 @@ export default function HostDashboard() {
                   </p>
                 )}
                 <div className="mt-2 text-xs text-center text-muted-foreground space-y-0.5">
-                  <p>Net earnings: {formatMoney(totalEligibleEarnings, "RWF")}</p>
-                  <p>Pending payouts: {formatMoney(pendingPayoutAmount, "RWF")}</p>
-                  <p>Completed payouts: {formatMoney(completedPayoutAmount, "RWF")}</p>
+                  <p>Net earnings: {formatDashboardMoneyFromRwf(totalEligibleEarnings)}</p>
+                  <p>Pending payouts: {formatDashboardMoneyFromRwf(pendingPayoutAmount)}</p>
+                  <p>Completed payouts: {formatDashboardMoneyFromRwf(completedPayoutAmount)}</p>
                 </div>
               </Card>
               <Card className="p-4">
@@ -7961,7 +7984,7 @@ export default function HostDashboard() {
                           <div className="text-xs text-muted-foreground mt-1">Price per trip</div>
                           <div className="flex items-center justify-between mt-3">
                             <span className="text-primary font-bold">
-                              {formatMoney(Number(r.base_price ?? 0), r.currency || "RWF")}
+                              {formatDashboardMoney(Number(r.base_price ?? 0), r.currency || "RWF")}
                             </span>
                             <div className="flex gap-1">
                               <Button size="sm" variant="ghost" onClick={() => setEditingRouteId(r.id)}>
@@ -8110,7 +8133,7 @@ export default function HostDashboard() {
                               <div className="space-y-1">
                                 <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Host Net Amount</p>
                                 <div className="rounded-lg border border-border bg-background px-2.5 py-2">
-                                  <p className="text-base font-semibold leading-tight text-emerald-600">{formatMoney(hostNetAmountRwf, 'RWF')}</p>
+                                  <p className="text-base font-semibold leading-tight text-emerald-600">{formatDashboardMoneyFromRwf(hostNetAmountRwf)}</p>
                                   <p className="text-[11px] text-muted-foreground mt-1">After platform fees</p>
                                 </div>
                               </div>
@@ -8338,7 +8361,7 @@ export default function HostDashboard() {
                         <div className="space-y-1">
                           <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Host Net Amount</p>
                           <div className="rounded-lg border border-border bg-background px-2.5 py-2">
-                            <p className="text-base font-semibold leading-tight text-emerald-600">{formatMoney(hostNetAmountRwf, 'RWF')}</p>
+                            <p className="text-base font-semibold leading-tight text-emerald-600">{formatDashboardMoneyFromRwf(hostNetAmountRwf)}</p>
                             <p className="text-[11px] text-muted-foreground mt-1">After platform fees</p>
                           </div>
                         </div>
@@ -8729,11 +8752,11 @@ export default function HostDashboard() {
                           <span className="font-medium text-primary">
                             {discount.discount_type === 'percentage' 
                               ? `${discount.discount_value}% off`
-                              : `${discount.currency} ${discount.discount_value} off`
+                              : `${formatDashboardMoney(discount.discount_value, discount.currency)} off`
                             }
                           </span>
                           {discount.minimum_amount > 0 && (
-                            <span className="text-muted-foreground">Min: {formatMoney(discount.minimum_amount, discount.currency)}</span>
+                            <span className="text-muted-foreground">Min: {formatDashboardMoney(discount.minimum_amount, discount.currency)}</span>
                           )}
                           {discount.max_uses && (
                             <span className="text-muted-foreground">Uses: {discount.current_uses}/{discount.max_uses}</span>
@@ -8812,12 +8835,11 @@ export default function HostDashboard() {
                     <span className="text-sm font-medium text-muted-foreground">Gross Revenue</span>
                   </div>
                   <p className="text-2xl font-bold">
-                    {formatMoney(
+                    {formatDashboardMoneyFromRwf(
                       filteredReportBookings.reduce((sum, b) => {
                         const { amount, currency } = getResolvedBookingAmountForHost(b);
                         return sum + toRwfAmount(amount, currency);
-                      }, 0),
-                      "RWF"
+                      }, 0)
                     )}
                   </p>
                 </Card>
@@ -8828,13 +8850,12 @@ export default function HostDashboard() {
                     <span className="text-sm font-medium text-muted-foreground">Net Earnings</span>
                   </div>
                   <p className="text-2xl font-bold text-green-600">
-                    {formatMoney(
+                    {formatDashboardMoneyFromRwf(
                       filteredReportBookings
                         .reduce((sum, b) => {
                           const { amount, currency } = getHostNetEarningsForBooking(b);
                           return sum + toRwfAmount(amount, currency);
-                        }, 0),
-                      "RWF"
+                        }, 0)
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">After platform fees</p>
@@ -8873,8 +8894,8 @@ export default function HostDashboard() {
                           <TableHead>Booking ID</TableHead>
                           <TableHead>Order ID</TableHead>
                           <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Paid Amount (RWF)</TableHead>
-                          <TableHead className="text-right">Host Net Earning (RWF)</TableHead>
+                          <TableHead className="text-right">Paid Amount ({dashboardDisplayCurrency})</TableHead>
+                          <TableHead className="text-right">Host Net Earning ({dashboardDisplayCurrency})</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -8892,8 +8913,8 @@ export default function HostDashboard() {
                                 <TableCell className="font-mono text-xs break-all">{b.id}</TableCell>
                                 <TableCell className="font-mono text-xs break-all">{b.order_id || "-"}</TableCell>
                                 <TableCell className="capitalize">{String(b.status || "-")}</TableCell>
-                                <TableCell className="text-right font-medium">{formatMoney(paidAmountRwf, "RWF")}</TableCell>
-                                <TableCell className="text-right font-semibold text-emerald-600">{formatMoney(hostNetRwf, "RWF")}</TableCell>
+                                <TableCell className="text-right font-medium">{formatDashboardMoneyFromRwf(paidAmountRwf)}</TableCell>
+                                <TableCell className="text-right font-semibold text-emerald-600">{formatDashboardMoneyFromRwf(hostNetRwf)}</TableCell>
                               </TableRow>
                             );
                           })}
@@ -9083,10 +9104,8 @@ END OF REPORT
                               {new Date(payout.created_at).toLocaleDateString()}
                             </TableCell>
                             <TableCell className="font-medium">
-                              <div>{payout.currency} {payout.amount?.toLocaleString()}</div>
-                              <div className="text-xs text-muted-foreground">
-                                ≈ {formatMoney(convertAmount(payout.amount || 0, payout.currency || 'RWF', 'USD', usdRates) ?? 0, 'USD')}
-                              </div>
+                              <div>{formatDashboardMoney(Number(payout.amount || 0), payout.currency || 'RWF')}</div>
+                              <div className="text-xs text-muted-foreground">Original: {formatMoney(Number(payout.amount || 0), payout.currency || 'RWF')}</div>
                             </TableCell>
                             <TableCell>
                               <Badge variant="outline" className="capitalize">
@@ -9521,7 +9540,6 @@ END OF REPORT
                   {(() => {
                     const originalListing = getOriginalListingSubtotal(bookingFullDetails as Booking);
                     const { amount: hostNetAmount, currency: hostNetCurrency } = getHostNetEarningsForBooking(bookingFullDetails as Booking);
-                    const displayCurrency = 'RWF';
                     const convertedOriginalListingPrice = toRwfAmount(
                       Math.max(0, Number(originalListing.listingSubtotal || 0)),
                       originalListing.currency
@@ -9545,13 +9563,13 @@ END OF REPORT
                       <div className="space-y-4">
                         <div className="rounded-xl border bg-muted/20 p-4">
                           <p className="text-xs uppercase tracking-wide text-muted-foreground">Original Listing Price</p>
-                          <p className="text-2xl font-bold mt-1">{formatMoney(convertedOriginalListingPrice, displayCurrency)}</p>
+                          <p className="text-2xl font-bold mt-1">{formatDashboardMoneyFromRwf(convertedOriginalListingPrice)}</p>
                           <p className="text-xs text-muted-foreground mt-1">Base listing amount before platform fees</p>
                         </div>
 
                         <div className="rounded-xl border bg-muted/20 p-4">
                           <p className="text-xs uppercase tracking-wide text-muted-foreground">Host Net Amount</p>
-                          <p className="text-2xl font-bold mt-1">{formatMoney(convertedHostNetEarnings, displayCurrency)}</p>
+                          <p className="text-2xl font-bold mt-1">{formatDashboardMoneyFromRwf(convertedHostNetEarnings)}</p>
                           <p className="text-xs text-muted-foreground mt-1">After platform fees</p>
                         </div>
 
@@ -9883,10 +9901,10 @@ END OF REPORT
             {/* Available balance */}
             <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-3">
               <p className="text-sm text-muted-foreground">Available for payout</p>
-              <p className="text-2xl font-bold text-green-600">{formatMoney(availableForPayout, 'RWF')}</p>
-              <p className="text-sm text-muted-foreground">
-                ≈ {formatMoney(convertAmount(availableForPayout, 'RWF', 'USD', usdRates) ?? 0, 'USD')}
-              </p>
+              <p className="text-2xl font-bold text-green-600">{formatDashboardMoneyFromRwf(availableForPayout)}</p>
+              {dashboardDisplayCurrency !== 'RWF' && (
+                <p className="text-sm text-muted-foreground">Base: {formatMoney(availableForPayout, 'RWF')}</p>
+              )}
             </div>
 
             {/* Payout Method Selection */}
@@ -9964,7 +9982,7 @@ END OF REPORT
               />
               {payoutAmount && parseFloat(payoutAmount) > 0 && (
                 <p className="text-sm text-muted-foreground">
-                  ≈ {formatMoney(convertAmount(parseFloat(payoutAmount), 'RWF', 'USD', usdRates) ?? 0, 'USD')}
+                  ≈ {formatDashboardMoneyFromRwf(parseFloat(payoutAmount))}
                 </p>
               )}
               <div className="flex justify-between text-xs text-muted-foreground">
@@ -9986,11 +10004,11 @@ END OF REPORT
                 <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <div>
                   <p className="text-emerald-800 dark:text-emerald-200">
-                    Completed payouts: {formatMoney(completedPayoutAmount, 'RWF')}
+                    Completed payouts: {formatDashboardMoneyFromRwf(completedPayoutAmount)}
                   </p>
-                  <p className="text-emerald-700 dark:text-emerald-300 text-xs">
-                    ≈ {formatMoney(convertAmount(completedPayoutAmount, 'RWF', 'USD', usdRates) ?? 0, 'USD')}
-                  </p>
+                  {dashboardDisplayCurrency !== 'RWF' && (
+                    <p className="text-emerald-700 dark:text-emerald-300 text-xs">Base: {formatMoney(completedPayoutAmount, 'RWF')}</p>
+                  )}
                 </div>
               </div>
             )}
@@ -10000,11 +10018,11 @@ END OF REPORT
                 <AlertCircle className="w-4 h-4 text-yellow-600 shrink-0 mt-0.5" />
                 <div>
                   <p className="text-yellow-800 dark:text-yellow-200">
-                    You have {formatMoney(pendingPayoutAmount, 'RWF')} in pending payouts being processed.
+                    You have {formatDashboardMoneyFromRwf(pendingPayoutAmount)} in pending payouts being processed.
                   </p>
-                  <p className="text-yellow-700 dark:text-yellow-300 text-xs">
-                    ≈ {formatMoney(convertAmount(pendingPayoutAmount, 'RWF', 'USD', usdRates) ?? 0, 'USD')}
-                  </p>
+                  {dashboardDisplayCurrency !== 'RWF' && (
+                    <p className="text-yellow-700 dark:text-yellow-300 text-xs">Base: {formatMoney(pendingPayoutAmount, 'RWF')}</p>
+                  )}
                 </div>
               </div>
             )}
