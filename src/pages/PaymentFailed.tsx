@@ -162,7 +162,8 @@ export default function PaymentFailed() {
       const isFlutterwave = providerParam === "flutterwave" || String(paymentProvider).toUpperCase() === "FLUTTERWAVE";
 
       if (isPesapal) {
-        const redirectUrl = `${window.location.origin}/payment-pending?checkoutId=${encodeURIComponent(checkoutId)}&provider=pesapal`;
+        const pendingUrl = `/payment-pending?checkoutId=${encodeURIComponent(checkoutId)}&provider=pesapal`;
+        const redirectUrl = `${window.location.origin}${pendingUrl}`;
 
         const cardInitResponse = await fetch("/api/pesapal", {
           method: "POST",
@@ -197,12 +198,24 @@ export default function PaymentFailed() {
           description: "Complete your card payment on Pesapal.",
         });
 
+        const opened = window.open(cardInitData.redirectUrl, "_blank", "noopener,noreferrer");
+        if (opened) {
+          navigate(pendingUrl);
+          return;
+        }
+
+        toast({
+          title: "Popup blocked",
+          description: "Opening Pesapal in this tab instead.",
+        });
+
         window.location.href = cardInitData.redirectUrl;
         return;
       }
 
       if (isFlutterwave) {
-        const redirectUrl = `${window.location.origin}/payment-pending?checkoutId=${encodeURIComponent(checkoutId)}&provider=flutterwave`;
+        const pendingUrl = `/payment-pending?checkoutId=${encodeURIComponent(checkoutId)}&provider=flutterwave`;
+        const redirectUrl = `${window.location.origin}${pendingUrl}`;
 
         const cardInitResponse = await fetch("/api/flutterwave", {
           method: "POST",
@@ -235,6 +248,17 @@ export default function PaymentFailed() {
         toast({
           title: "Redirecting to card checkout",
           description: "Complete your card payment on Flutterwave.",
+        });
+
+        const opened = window.open(cardInitData.link, "_blank", "noopener,noreferrer");
+        if (opened) {
+          navigate(pendingUrl);
+          return;
+        }
+
+        toast({
+          title: "Popup blocked",
+          description: "Opening Flutterwave in this tab instead.",
         });
 
         window.location.href = cardInitData.link;
@@ -393,7 +417,7 @@ export default function PaymentFailed() {
                   ) : (
                     <>
                       <RotateCcw className="w-4 h-4 mr-2" />
-                      Try Again
+                      Retry This Booking
                     </>
                   )}
                 </Button>

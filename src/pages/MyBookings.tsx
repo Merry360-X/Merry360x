@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { formatMoney } from "@/lib/money";
 import { convertAmount } from "@/lib/fx";
 import { logError, uiErrorMessage } from "@/lib/ui-errors";
@@ -109,8 +110,10 @@ const MyBookings = () => {
   const [reviewBooking, setReviewBooking] = useState<Booking | null>(null);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
+  const [reviewerName, setReviewerName] = useState("");
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewValidationError, setReviewValidationError] = useState(false);
+  const [reviewNameError, setReviewNameError] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -643,7 +646,13 @@ const MyBookings = () => {
     setReviewBooking(b);
     setReviewRating(5);
     setReviewComment("");
+    const defaultName =
+      String(user?.user_metadata?.full_name || user?.user_metadata?.name || "").trim() ||
+      String(user?.email || "").split("@")[0] ||
+      "";
+    setReviewerName(defaultName);
     setReviewValidationError(false);
+    setReviewNameError(false);
     setReviewOpen(true);
   };
 
@@ -657,6 +666,17 @@ const MyBookings = () => {
         variant: "destructive", 
         title: t("common.error"), 
         description: "Please select a rating between 1-5." 
+      });
+      return;
+    }
+
+    const normalizedReviewerName = reviewerName.trim();
+    if (!normalizedReviewerName) {
+      setReviewNameError(true);
+      toast({
+        variant: "destructive",
+        title: t("common.error"),
+        description: "Please enter your name before submitting.",
       });
       return;
     }
@@ -674,6 +694,7 @@ const MyBookings = () => {
             token: reviewBooking.review_token,
             accommodationRating: reviewRating,
             accommodationComment: comment,
+            reviewerName: normalizedReviewerName,
           }),
         });
 
@@ -687,14 +708,53 @@ const MyBookings = () => {
           throw new Error("Could not find listing for this booking review.");
         }
 
-        const { error } = await supabase.from("property_reviews").insert({
-          booking_id: reviewBooking.id,
-          property_id: listingId,
-          reviewer_id: user.id,
-          rating: reviewRating,
-          comment: comment ?? null,
-        });
-        if (error) throw error;
+        const reviewerComment = comment
+          ? `Reviewed by ${normalizedReviewerName}.\n\n${comment}`
+          : `Reviewed by ${normalizedReviewerName}.`;
+
+        if (reviewBooking.property_id) {
+          const payload = {
+            booking_id: reviewBooking.id,
+            property_id: reviewBooking.property_id,
+            reviewer_id: user.id,
+            rating: reviewRating,
+            comment: reviewerComment,
+          };
+
+          const { error } = await supabase.from("property_reviews").insert(payload);
+          if (error) {
+            const errorCode = (error as { code?: string }).code;
+            if (errorCode === "23505") {
+              const { error: updateError } = await supabase
+                .from("property_reviews")
+                .update({
+                  booking_id: reviewBooking.id,
+                  rating: reviewRating,
+                  comment: reviewerComment,
+                  service_rating: null,
+                  service_comment: null,
+                  is_hidden: false,
+                })
+                .eq("property_id", reviewBooking.property_id)
+                .eq("reviewer_id", user.id);
+              if (updateError) throw updateError;
+            } else {
+              throw error;
+            }
+          }
+        } else {
+          const { error } = await supabase.from("reviews").insert({
+            booking_id: reviewBooking.id,
+            property_id: null,
+            tour_id: reviewBooking.tour_id || null,
+            transport_id: reviewBooking.transport_id || null,
+            user_id: user.id,
+            rating: reviewRating,
+            comment: reviewerComment,
+            is_hidden: false,
+          });
+          if (error) throw error;
+        }
       }
 
       toast({ title: "Review submitted" });
@@ -837,33 +897,6 @@ const MyBookings = () => {
         <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2">{t("bookings.title")}</h1>
         <p className="text-muted-foreground mb-8">{t("bookings.subtitle")}</p>
 
-        {recentDecisionBookings.length > 0 && (
-          <Alert className="mb-6 border-primary/30 bg-primary/5">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>New booking decisions</AlertTitle>
-            <AlertDescription className="flex flex-col gap-3">
-              <p>
-                {recentDecisionBookings.length} booking{recentDecisionBookings.length > 1 ? "s have" : " has"} been updated by hosts.
-              </p>
-              <div className="space-y-1 text-sm">
-                {recentDecisionBookings.slice(0, 3).map((booking) => (
-                  <p key={booking.id} className="text-muted-foreground">
-                    {booking.confirmation_status === "approved" ? "✅ Approved" : "❌ Rejected"} • {booking.id}
-                  </p>
-                ))}
-                {recentDecisionBookings.length > 3 && (
-                  <p className="text-muted-foreground">+{recentDecisionBookings.length - 3} more updates</p>
-                )}
-              </div>
-              <div>
-                <Button size="sm" variant="outline" onClick={markDecisionUpdatesAsRead}>
-                  Mark as read
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
         {bookings.length === 0 ? (
           <div className="py-20 text-center">
             <Calendar className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
@@ -913,56 +946,55 @@ const MyBookings = () => {
                 : firstBooking.booking_type === "tour" && firstBooking.tour_packages?.currency
                   ? firstBooking.tour_packages.currency
                   : String(firstBooking.currency || "USD");
+              const bookingDateLabel = `${new Date(firstBooking.check_in).toLocaleDateString()} - ${new Date(firstBooking.check_out).toLocaleDateString()}`;
+              const locationSummary = (() => {
+                const locations = Array.from(new Set(orderBookings.map((booking) => {
+                  if (booking.booking_type === "tour" && booking.tour_packages) {
+                    return `${booking.tour_packages.city}, ${booking.tour_packages.country}`;
+                  }
+                  if (booking.booking_type === "transport" && booking.transport_vehicles) {
+                    return `${booking.transport_vehicles.vehicle_type}`;
+                  }
+                  return booking.properties?.location || "";
+                }).filter(Boolean)));
+
+                if (locations.length === 0) return "Location unavailable";
+                if (locations.length === 1) return extractNeighborhood(locations[0]) || locations[0];
+                return `${locations.length} locations`;
+              })();
               
               return (
-                <div key={orderId} className="bg-card rounded-2xl overflow-hidden border border-border/80 shadow-sm">
-                  {/* Header */}
-                  <div className="px-6 py-5 border-b border-border bg-muted/20">
-                    <div className="flex items-start justify-between flex-wrap gap-3">
-                      <div>
-                        <h3 className="font-semibold text-lg text-foreground leading-tight">
-                          {isMultiItem ? 'Multi-Item Booking' : (
-                            firstBooking.properties?.title || 
-                            firstBooking.tour_packages?.title || 
-                            firstBooking.transport_vehicles?.title || 
-                            'Booking'
-                          )}
-                        </h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          #{displayReference} • {new Date(firstBooking.created_at).toLocaleDateString()}
-                        </p>
-                        {isMultiItem && (
-                          <div className="flex flex-wrap gap-2 mt-2.5">
-                            {accommodationCount > 0 && <Badge variant="secondary" className="text-xs">{accommodationCount} Stay</Badge>}
-                            {tourCount > 0 && <Badge variant="secondary" className="text-xs">{tourCount} Tour</Badge>}
-                            {transportCount > 0 && <Badge variant="secondary" className="text-xs">{transportCount} Transport</Badge>}
-                          </div>
-                        )}
+                <div key={orderId} className="rounded-xl border border-border bg-card/70 shadow-sm">
+                  <div className="p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1.5">
+                        <p className="text-sm font-semibold text-foreground">Order #{displayReference}</p>
+                        <p className="text-sm text-muted-foreground">{bookingDateLabel}</p>
+                        <p className="text-sm text-muted-foreground">{locationSummary}</p>
                       </div>
-                      <div className="flex items-center gap-2 self-start">
-                        <Badge className={confirmationUi.badgeClass}>
-                          {confirmationUi.badgeLabel}
-                        </Badge>
-                        {firstBooking.payment_status && (
-                          <Badge variant="outline" className="text-xs bg-background">
-                            {firstBooking.payment_status === 'paid' ? '✓ Paid' : firstBooking.payment_status}
-                          </Badge>
+                      <div className="flex items-center gap-2">
+                        {nextReviewBooking && (
+                          <Button size="sm" onClick={() => openReview(nextReviewBooking)}>
+                            <Star className="w-4 h-4 mr-2" /> Leave Review
+                          </Button>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  {confirmationUi.alertTitle && (
-                    <div className="px-6 pt-4">
-                      <Alert className={confirmationUi.alertClass}>
-                        <AlertTitle>{confirmationUi.alertTitle}</AlertTitle>
-                        <AlertDescription>{confirmationUi.alertMessage}</AlertDescription>
-                      </Alert>
-                    </div>
-                  )}
+                  <details className="border-t border-border">
+                    <summary className="cursor-pointer list-none px-5 py-3 text-sm font-medium text-foreground">
+                      More details
+                    </summary>
 
-                  {/* Items Breakdown */}
-                  <div className="p-6 space-y-5">
+                    <div className="p-5 space-y-5">
+                      {confirmationUi.alertTitle && (
+                        <Alert className={confirmationUi.alertClass}>
+                          <AlertTitle>{confirmationUi.alertTitle}</AlertTitle>
+                          <AlertDescription>{confirmationUi.alertMessage}</AlertDescription>
+                        </Alert>
+                      )}
+
                     {orderBookings.map((booking, idx) => {
                       const bookingType = booking.booking_type || 'property';
                       const isTour = bookingType === 'tour';
@@ -1052,19 +1084,6 @@ const MyBookings = () => {
                                 })()}
                               </p>
                               <p className="text-xs text-muted-foreground mt-0.5">Individual total (gross)</p>
-                              <p className="text-xs text-emerald-600 mt-0.5">
-                                {(() => {
-                                  const amt = Number(booking.checkout_requests?.total_amount || booking.total_price);
-                                  const fromCur = booking.booking_type === "property" && booking.properties?.currency
-                                    ? (booking.checkout_requests?.currency || booking.properties.currency)
-                                    : booking.booking_type === "tour" && booking.tour_packages?.currency
-                                      ? (booking.checkout_requests?.currency || booking.tour_packages.currency)
-                                      : String(booking.checkout_requests?.currency || booking.currency || "USD");
-                                  const net = calculatePawaPayProcessing(amt).netAmount;
-                                  const converted = convertAmount(net, fromCur, currency, usdRates);
-                                  return `Net after PawaPay: ${formatMoney(converted ?? net, converted !== null ? currency : fromCur)}`;
-                                })()}
-                              </p>
                             </div>
                           </div>
 
@@ -1109,44 +1128,6 @@ const MyBookings = () => {
                       );
                     })}
 
-                    {/* Total */}
-                    {isMultiItem && (
-                      <div className="pt-4 border-t border-border space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold text-foreground">Total</span>
-                          <span className="text-xl font-bold text-primary">
-                            {(() => {
-                              const converted = convertAmount(grandTotal, listingCurrency, currency, usdRates);
-                              return formatMoney(converted ?? grandTotal, converted !== null ? currency : listingCurrency);
-                            })()}
-                          </span>
-                        </div>
-                        {totalPaid > 0 && (
-                          <>
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-muted-foreground">Amount Paid</span>
-                              <span className="text-lg font-bold text-green-600">
-                                {(() => {
-                                  const converted = convertAmount(totalPaid, paidCurrency, currency, usdRates);
-                                  return formatMoney(converted ?? totalPaid, converted !== null ? currency : paidCurrency);
-                                })()}
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-muted-foreground">Net After PawaPay</span>
-                              <span className="text-base font-semibold text-emerald-700">
-                                {(() => {
-                                  const net = calculatePawaPayProcessing(totalPaid).netAmount;
-                                  const converted = convertAmount(net, paidCurrency, currency, usdRates);
-                                  return formatMoney(converted ?? net, converted !== null ? currency : paidCurrency);
-                                })()}
-                              </span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
-
                     {/* Booking Info */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 border-t">
                       <div className="rounded-md border border-border bg-muted/20 p-3">
@@ -1165,28 +1146,6 @@ const MyBookings = () => {
                       </div>
                     </div>
 
-                    {/* Host Contact */}
-                    {(firstBooking.status === "confirmed" || firstBooking.status === "completed") && firstBooking.host_profile && (
-                      <div className="mt-4 p-4 bg-green-50 dark:bg-green-950/20 rounded-xl border border-green-200 dark:border-green-800">
-                        <p className="text-xs font-semibold text-green-800 dark:text-green-200 mb-2.5">📞 Host Contact</p>
-                        <div className="space-y-2">
-                          {firstBooking.host_profile.full_name && (
-                            <p className="text-sm font-medium">{firstBooking.host_profile.full_name}</p>
-                          )}
-                          {firstBooking.host_profile.email && (
-                            <a href={`mailto:${firstBooking.host_profile.email}`} className="flex items-center gap-2 text-sm text-primary hover:underline">
-                              <Mail className="w-4 h-4" /> {firstBooking.host_profile.email}
-                            </a>
-                          )}
-                          {firstBooking.host_profile.phone && (
-                            <a href={`tel:${firstBooking.host_profile.phone}`} className="flex items-center gap-2 text-sm hover:text-primary">
-                              <Phone className="w-4 h-4" /> {firstBooking.host_profile.phone}
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
                     {/* Actions */}
                     <div className="flex flex-wrap gap-2 pt-4">
                       {(firstBooking.status === "pending" || firstBooking.status === "confirmed") && (
@@ -1198,11 +1157,6 @@ const MyBookings = () => {
                             <XCircle className="w-4 h-4 mr-2" /> Cancel
                           </Button>
                         </>
-                      )}
-                      {nextReviewBooking && (
-                        <Button size="sm" onClick={() => openReview(nextReviewBooking)} className="flex-1 min-w-[170px]">
-                          <Star className="w-4 h-4 mr-2" /> Leave Review
-                        </Button>
                       )}
 
                       {firstBooking.status === "cancelled" && firstBooking.payment_status === "paid" && (
@@ -1222,7 +1176,72 @@ const MyBookings = () => {
                       )}
                     </div>
 
-                  </div>
+                    <details className="border-t border-border pt-4">
+                      <summary className="cursor-pointer list-none text-sm font-medium text-muted-foreground hover:text-foreground">
+                        Advanced details
+                      </summary>
+
+                      <div className="mt-4 space-y-4">
+                        <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+                          <div className="flex justify-between items-center">
+                            <span className="font-semibold text-foreground">Total</span>
+                            <span className="text-lg font-bold text-primary">
+                              {(() => {
+                                const converted = convertAmount(grandTotal, listingCurrency, currency, usdRates);
+                                return formatMoney(converted ?? grandTotal, converted !== null ? currency : listingCurrency);
+                              })()}
+                            </span>
+                          </div>
+                          {totalPaid > 0 && (
+                            <>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-muted-foreground">Amount Paid</span>
+                                <span className="text-sm font-semibold text-foreground">
+                                  {(() => {
+                                    const converted = convertAmount(totalPaid, paidCurrency, currency, usdRates);
+                                    return formatMoney(converted ?? totalPaid, converted !== null ? currency : paidCurrency);
+                                  })()}
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-muted-foreground">Net After PawaPay</span>
+                                <span className="text-sm font-semibold text-foreground">
+                                  {(() => {
+                                    const net = calculatePawaPayProcessing(totalPaid).netAmount;
+                                    const converted = convertAmount(net, paidCurrency, currency, usdRates);
+                                    return formatMoney(converted ?? net, converted !== null ? currency : paidCurrency);
+                                  })()}
+                                </span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {(firstBooking.status === "confirmed" || firstBooking.status === "completed") && firstBooking.host_profile && (
+                          <div className="rounded-lg border border-border bg-muted/20 p-3">
+                            <p className="text-xs font-semibold text-foreground mb-2">Host Contact</p>
+                            <div className="space-y-2">
+                              {firstBooking.host_profile.full_name && (
+                                <p className="text-sm font-medium">{firstBooking.host_profile.full_name}</p>
+                              )}
+                              {firstBooking.host_profile.email && (
+                                <a href={`mailto:${firstBooking.host_profile.email}`} className="flex items-center gap-2 text-sm text-primary hover:underline">
+                                  <Mail className="w-4 h-4" /> {firstBooking.host_profile.email}
+                                </a>
+                              )}
+                              {firstBooking.host_profile.phone && (
+                                <a href={`tel:${firstBooking.host_profile.phone}`} className="flex items-center gap-2 text-sm hover:text-primary">
+                                  <Phone className="w-4 h-4" /> {firstBooking.host_profile.phone}
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </details>
+
+                    </div>
+                  </details>
                 </div>
               );
             })}
@@ -1327,6 +1346,23 @@ const MyBookings = () => {
           </DialogHeader>
           
           <div className="space-y-6">
+            <div>
+              <Label htmlFor="reviewer-name" className="text-sm font-medium mb-2 block">Your Name</Label>
+              <Input
+                id="reviewer-name"
+                value={reviewerName}
+                onChange={(e) => {
+                  setReviewerName(e.target.value);
+                  setReviewNameError(false);
+                }}
+                placeholder="Enter your name"
+                maxLength={80}
+              />
+              {reviewNameError && (
+                <p className="text-sm text-red-600 mt-1">Name is required</p>
+              )}
+            </div>
+
             {/* Star Rating */}
             <div className="flex flex-col items-center gap-3 py-4">
               <div className="flex gap-2">
@@ -1418,7 +1454,9 @@ const MyBookings = () => {
                   setReviewOpen(false);
                   setReviewComment("");
                   setReviewRating(5);
+                  setReviewerName("");
                   setReviewValidationError(false);
+                  setReviewNameError(false);
                 }} 
                 disabled={submittingReview}
                 className="flex-1"

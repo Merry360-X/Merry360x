@@ -27,7 +27,6 @@ import { convertAmount } from "@/lib/fx";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 
 type PropertyRow = {
@@ -2055,7 +2054,7 @@ export default function PropertyDetails() {
                   </div>
                 ) : null}
 
-                <div className="mt-4 flex items-center justify-between gap-4">
+                <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="text-sm text-muted-foreground">
                     {nights > 0 ? (
                       <>
@@ -2082,7 +2081,7 @@ export default function PropertyDetails() {
                       <>Select valid dates to see total.</>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
                     {(() => {
                       const bookingDisabled = booking || nights <= 0 || (isMonthlyOnlyListing && nights < 30) || (addedAddOn && !isInTripCart);
                       const bookingCtaLabel = booking
@@ -2100,47 +2099,47 @@ export default function PropertyDetails() {
                       onClick={addPropertyToTripCart}
                       disabled={booking}
                       type="button"
+                      className="shrink-0"
                     >
                       {isInTripCart ? t("propertyDetails.inTripCart") : t("propertyDetails.addToTripCart")}
                     </Button>
                     {!isMonthlyOnlyListing && breakfastAddon.breakfastEnabled ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button type="button" disabled={bookingDisabled}>
-                            {bookingCtaLabel}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="inline-flex max-w-full items-center gap-1 rounded-lg border border-border bg-background p-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={breakfastPlan === "no_breakfast" ? "default" : "ghost"}
+                            disabled={bookingDisabled}
+                            onClick={() => setBreakfastPlan("no_breakfast")}
+                            className="h-8 px-2.5 whitespace-nowrap"
+                          >
+                            {breakfastPlan === "no_breakfast" ? <BadgeCheck className="w-3.5 h-3.5 mr-1" /> : null}
+                            No breakfast
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={breakfastPlan === "with_breakfast" ? "default" : "ghost"}
                             disabled={bookingDisabled}
-                            onSelect={(e) => {
-                              e.preventDefault();
-                              setBreakfastPlan("no_breakfast");
-                            }}
+                            onClick={() => setBreakfastPlan("with_breakfast")}
+                            className="h-8 px-2.5 whitespace-nowrap"
                           >
-                            {breakfastPlan === "no_breakfast" ? "No breakfast (Free) - selected" : "No breakfast (Free)"}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={bookingDisabled}
-                            onSelect={(e) => {
-                              e.preventDefault();
-                              setBreakfastPlan("with_breakfast");
-                            }}
-                          >
-                            {breakfastPlan === "with_breakfast"
-                              ? `With breakfast (+${displayMoney(Number(breakfastAddon.breakfastPricePerNight), String(data.currency ?? "RWF"))} / night) - selected`
-                              : `With breakfast (+${displayMoney(Number(breakfastAddon.breakfastPricePerNight), String(data.currency ?? "RWF"))} / night)`}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={bookingDisabled}
-                            onSelect={() => {
-                              void submitBooking();
-                            }}
-                          >
-                            Continue to checkout
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                            {breakfastPlan === "with_breakfast" ? <BadgeCheck className="w-3.5 h-3.5 mr-1" /> : null}
+                            With breakfast
+                          </Button>
+                        </div>
+                        <Button
+                          type="button"
+                          disabled={bookingDisabled}
+                          onClick={() => {
+                            void submitBooking();
+                          }}
+                          className="shrink-0"
+                        >
+                          {bookingCtaLabel}
+                        </Button>
+                      </div>
                     ) : (
                       <Button
                         onClick={() => void submitBooking()}

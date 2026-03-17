@@ -43,7 +43,9 @@ import {
   Mail,
   MessageCircle,
   X,
-  Users
+  Users,
+  ExternalLink,
+  LockKeyhole
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getTourBillingQuantity, getTourPerPersonUnitPrice, getTourPriceSuffix, getTourPricingModel } from "@/lib/tour-pricing";
@@ -116,6 +118,16 @@ const COUNTRY_BY_CODE: Record<string, string> = {
   '+260': 'Zambia',
 };
 
+const BILLING_COUNTRY_OPTIONS = [
+  { code: "RW", label: "Rwanda" },
+  { code: "KE", label: "Kenya" },
+  { code: "UG", label: "Uganda" },
+  { code: "ZM", label: "Zambia" },
+  { code: "TZ", label: "Tanzania" },
+  { code: "BI", label: "Burundi" },
+  { code: "ZA", label: "South Africa" },
+];
+
 // Get sorted countries based on user's phone country code
 function getSortedCountries(userCountryCode: string): [string, typeof METHODS_BY_COUNTRY[string]][] {
   const userCountry = COUNTRY_BY_CODE[userCountryCode];
@@ -164,6 +176,11 @@ export default function CheckoutNew() {
     email: "",
     phone: "",
     notes: "",
+    billingAddress1: "",
+    billingAddress2: "",
+    billingCity: "",
+    billingPostalCode: "",
+    billingCountry: "RW",
   });
 
   const checkoutDraftKey = `checkout-draft-${user?.id || "guest"}`;
@@ -180,6 +197,7 @@ export default function CheckoutNew() {
   const isDirectPropertyCheckout = mode === "booking" && Boolean(searchParams.get("propertyId"));
   const checkInParam = searchParams.get("checkIn") || "";
   const checkOutParam = searchParams.get("checkOut") || "";
+  const guestContactCacheKey = "checkout-contact-cache";
 
   const updateCheckoutDates = (nextCheckIn: string, nextCheckOut: string) => {
     if (!nextCheckIn || !nextCheckOut) return;
@@ -206,6 +224,16 @@ export default function CheckoutNew() {
       setGeoApplied(true);
     }
   }, [detectedCountry, geoDefaults, geoApplied]);
+
+  useEffect(() => {
+    if (!detectedCountry) return;
+    const detected = detectedCountry.toUpperCase();
+    if (!/^[A-Z]{2}$/.test(detected)) return;
+    setFormData((prev) => {
+      if (prev.billingCountry && prev.billingCountry.trim().length > 0) return prev;
+      return { ...prev, billingCountry: detected };
+    });
+  }, [detectedCountry]);
   
   // Legal acknowledgment
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -282,6 +310,93 @@ export default function CheckoutNew() {
         });
     }
   }, [user]);
+
+  useEffect(() => {
+    if (user) return;
+
+    const cached = localStorage.getItem(guestContactCacheKey);
+    if (!cached) return;
+
+    try {
+      const parsed = JSON.parse(cached);
+      const cachedFullName = typeof parsed?.fullName === "string" ? parsed.fullName : "";
+      const cachedEmail = typeof parsed?.email === "string" ? parsed.email : "";
+      const cachedCountryCode = typeof parsed?.countryCode === "string" ? parsed.countryCode : "";
+      const cachedPhoneNumber = typeof parsed?.phoneNumber === "string" ? parsed.phoneNumber : "";
+      const cachedBillingAddress1 = typeof parsed?.billingAddress1 === "string" ? parsed.billingAddress1 : "";
+      const cachedBillingAddress2 = typeof parsed?.billingAddress2 === "string" ? parsed.billingAddress2 : "";
+      const cachedBillingCity = typeof parsed?.billingCity === "string" ? parsed.billingCity : "";
+      const cachedBillingPostalCode = typeof parsed?.billingPostalCode === "string" ? parsed.billingPostalCode : "";
+      const cachedBillingCountry = typeof parsed?.billingCountry === "string" ? parsed.billingCountry : "";
+
+      if (cachedFullName || cachedEmail) {
+        setFormData((prev) => ({
+          ...prev,
+          fullName: prev.fullName || cachedFullName,
+          email: prev.email || cachedEmail,
+          billingAddress1: prev.billingAddress1 || cachedBillingAddress1,
+          billingAddress2: prev.billingAddress2 || cachedBillingAddress2,
+          billingCity: prev.billingCity || cachedBillingCity,
+          billingPostalCode: prev.billingPostalCode || cachedBillingPostalCode,
+          billingCountry: prev.billingCountry || cachedBillingCountry || prev.billingCountry,
+        }));
+      }
+      if (cachedCountryCode) setCountryCode((prev) => prev || cachedCountryCode);
+      if (cachedPhoneNumber) setPhoneNumber((prev) => prev || cachedPhoneNumber);
+    } catch (error) {
+      console.warn("Failed to restore guest contact cache", error);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (user) return;
+    if (!formData.fullName.trim() && !formData.email.trim() && !phoneNumber.trim()) return;
+
+    localStorage.setItem(
+      guestContactCacheKey,
+      JSON.stringify({
+        fullName: formData.fullName,
+        email: formData.email,
+        countryCode,
+        phoneNumber,
+        billingAddress1: formData.billingAddress1,
+        billingAddress2: formData.billingAddress2,
+        billingCity: formData.billingCity,
+        billingPostalCode: formData.billingPostalCode,
+        billingCountry: formData.billingCountry,
+        updatedAt: new Date().toISOString(),
+      })
+    );
+  }, [
+    user,
+    formData.fullName,
+    formData.email,
+    formData.billingAddress1,
+    formData.billingAddress2,
+    formData.billingCity,
+    formData.billingPostalCode,
+    formData.billingCountry,
+    countryCode,
+    phoneNumber,
+  ]);
+
+  const launchSecureCardCheckout = async (redirectUrl: string, checkoutId: string) => {
+    await clearCart();
+    localStorage.removeItem("applied_discount");
+    clearCheckoutDraft();
+
+    const handoffStateKey = `secure-card-handoff:${checkoutId}`;
+    sessionStorage.setItem(
+      handoffStateKey,
+      JSON.stringify({
+        redirectUrl,
+        checkoutId,
+        createdAt: new Date().toISOString(),
+      })
+    );
+
+    navigate(`/secure-card-handoff?checkoutId=${encodeURIComponent(checkoutId)}`);
+  };
 
   useEffect(() => {
     const savedDraft = localStorage.getItem(checkoutDraftKey);
@@ -950,6 +1065,30 @@ export default function CheckoutNew() {
     const today = new Date().toISOString().slice(0, 10);
     return { checkIn: today, checkOut: addDays(today, 1) };
   };
+  
+  const getNormalizedPhone = () => {
+    const digitsOnly = phoneNumber.replace(/\D/g, "").replace(/^0+/, "");
+    if (digitsOnly.length >= 9) {
+      return `${countryCode}${digitsOnly}`;
+    }
+    return formData.phone?.trim() || null;
+  };
+
+  const getBillingCountryCode = () => {
+    const normalized = (formData.billingCountry || "").trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(normalized)) return normalized;
+
+    const fromLabel = BILLING_COUNTRY_OPTIONS.find(
+      (option) => option.label.toLowerCase() === normalized.toLowerCase()
+    );
+    if (fromLabel) return fromLabel.code;
+
+    if (countryCode === "+250") return "RW";
+    if (countryCode === "+254") return "KE";
+    if (countryCode === "+256") return "UG";
+    if (countryCode === "+260") return "ZM";
+    return "RW";
+  };
 
   // Process payment
   const handlePayment = async () => {
@@ -996,18 +1135,30 @@ export default function CheckoutNew() {
         setProfileAdultConfirmed(true);
       }
 
+      // Normalize phone once, then reuse for checkout payloads and provider prefill.
+      const normalizedPhone = getNormalizedPhone();
+      const [firstName, ...lastNameParts] = formData.fullName.trim().split(/\s+/).filter(Boolean);
+      const billingAddress = {
+        firstName: firstName || "Customer",
+        lastName: lastNameParts.join(" ") || "Customer",
+        line1: formData.billingAddress1.trim() || undefined,
+        line2: formData.billingAddress2.trim() || undefined,
+        city: formData.billingCity.trim() || undefined,
+        postalCode: formData.billingPostalCode.trim() || undefined,
+        countryCode: getBillingCountryCode(),
+        phoneNumber: normalizedPhone || undefined,
+      };
+
       // Clean phone number for mobile money payments only
       let fullPhone = null;
       if (isMobileMoneyMethod) {
         let cleanedPhone = phoneNumber.replace(/^0+/, ''); // Remove leading zeros
-        // Get country code digits without the + sign
         const countryDigits = countryCode.replace('+', '');
-        // If user entered country code + number, strip the country code since we add it from countryCode
         if (cleanedPhone.startsWith(countryDigits) && cleanedPhone.length >= 11) {
           cleanedPhone = cleanedPhone.substring(countryDigits.length);
         }
         fullPhone = `${countryCode}${cleanedPhone}`;
-        
+
         console.log("📱 Phone number processing:", {
           raw: phoneNumber,
           cleaned: cleanedPhone,
@@ -1119,7 +1270,7 @@ export default function CheckoutNew() {
         user_id: user?.id || null,
         name: formData.fullName,
         email: formData.email,
-        phone: fullPhone || formData.phone || null,
+        phone: fullPhone || normalizedPhone,
         message: formData.notes || null,
         total_amount: roundToCurrency(amountInRwf, 'RWF'),
         currency: 'RWF', // Always store in RWF
@@ -1135,8 +1286,10 @@ export default function CheckoutNew() {
           guest_info: {
             name: formData.fullName,
             email: formData.email,
-            phone: fullPhone || formData.phone || null,
+            phone: fullPhone || normalizedPhone,
+            billing_address: billingAddress,
           },
+          billing_address: billingAddress,
           special_requests: formData.notes || null,
           discount_code: appliedDiscount?.code || null,
           discount_amount: discount,
@@ -1216,7 +1369,7 @@ export default function CheckoutNew() {
             special_requests: specialRequests,
             guest_name: formData.fullName || null,
             guest_email: formData.email || null,
-            guest_phone: fullPhone || formData.phone || null,
+            guest_phone: fullPhone || normalizedPhone,
             is_guest_booking: !user,
           };
         });
@@ -1239,7 +1392,7 @@ export default function CheckoutNew() {
               checkoutId,
               guestName: formData.fullName,
               guestEmail: formData.email,
-              guestPhone: fullPhone || formData.phone || null,
+              guestPhone: fullPhone || normalizedPhone,
               totalAmount: roundToCurrency(amountInRwf, 'RWF'),
               currency: 'RWF',
               paymentMethod: 'bank_transfer',
@@ -1283,7 +1436,8 @@ export default function CheckoutNew() {
             currency: 'RWF',
             payerName: formData.fullName,
             payerEmail: formData.email,
-            phoneNumber: fullPhone || formData.phone || null,
+            phoneNumber: fullPhone || normalizedPhone,
+            billingAddress,
             description: `Merry360x Booking - ${cartItems.length} item(s)`,
             redirectUrl,
             metadata: {
@@ -1298,16 +1452,8 @@ export default function CheckoutNew() {
           throw new Error(cardInitData?.error || cardInitData?.message || 'Unable to initialize card payment');
         }
 
-        await clearCart();
-        localStorage.removeItem("applied_discount");
-        clearCheckoutDraft();
-
-        toast({
-          title: "Redirecting to secure card checkout",
-          description: "Complete your payment on Pesapal to confirm your booking.",
-        });
-
-        window.location.href = cardInitData.redirectUrl;
+        await launchSecureCardCheckout(cardInitData.redirectUrl, checkoutId);
+        setIsProcessing(false);
         return;
       }
 
@@ -1672,8 +1818,8 @@ export default function CheckoutNew() {
                       )}
                     >
                       <div className="flex items-center gap-2 md:gap-3">
-                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-emerald-500 flex items-center justify-center flex-shrink-0">
-                          <Smartphone className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg border border-border bg-background flex items-center justify-center flex-shrink-0">
+                          <Smartphone className="w-4 h-4 md:w-5 md:h-5 text-foreground" />
                         </div>
                         <div className="min-w-0">
                           <p className="font-medium text-xs md:text-base truncate">Mobile Money</p>
@@ -1696,8 +1842,8 @@ export default function CheckoutNew() {
                       )}
                     >
                       <div className="flex items-center gap-2 md:gap-3">
-                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-                          <CreditCard className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg border border-border bg-background flex items-center justify-center flex-shrink-0">
+                          <CreditCard className="w-4 h-4 md:w-5 md:h-5 text-foreground" />
                         </div>
                         <div className="min-w-0">
                           <p className="font-medium text-xs md:text-base truncate">{t("checkout.payment.card")}</p>
@@ -1720,8 +1866,8 @@ export default function CheckoutNew() {
                       )}
                     >
                       <div className="flex items-center gap-2 md:gap-3">
-                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-emerald-500 flex items-center justify-center flex-shrink-0">
-                          <Building2 className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg border border-border bg-background flex items-center justify-center flex-shrink-0">
+                          <Building2 className="w-4 h-4 md:w-5 md:h-5 text-foreground" />
                         </div>
                         <div className="min-w-0">
                           <p className="font-medium text-xs md:text-base truncate">{t("checkout.payment.bankTransfer")}</p>
@@ -1804,10 +1950,82 @@ export default function CheckoutNew() {
                   {/* Card checkout redirect info */}
                   {paymentMethod === 'card' && (
                     <div className="rounded-xl border border-border bg-card p-4 md:p-5 space-y-4">
-                      <p className="text-sm font-semibold text-foreground">Pay with card on Pesapal</p>
-                      <p className="text-sm text-muted-foreground">
-                        Click <span className="font-medium">Review Booking</span> and then <span className="font-medium">Confirm Booking</span>. You will be redirected to Pesapal to securely enter your card details and complete payment.
-                      </p>
+                      <div className="flex items-start gap-3">
+                        <CreditCard className="w-5 h-5 text-foreground mt-0.5" />
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">Secure Card Checkout</p>
+                          <p className="text-sm text-muted-foreground">No iframe. Card details are entered on Pesapal only.</p>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-3 text-sm">
+                        <div className="rounded-lg border border-border bg-background p-3">1. Confirm Booking</div>
+                        <div className="rounded-lg border border-border bg-background p-3">2. Secure Window</div>
+                        <div className="rounded-lg border border-border bg-background p-3">3. Pay on Pesapal</div>
+                      </div>
+
+                      <div className="space-y-1.5 text-xs text-muted-foreground">
+                        <p className="flex items-center gap-2"><LockKeyhole className="w-4 h-4" /> PCI-compliant payment handled by Pesapal.</p>
+                        <p className="flex items-center gap-2"><ExternalLink className="w-4 h-4" /> Opens in a secure hover window (same tab).</p>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="sm:col-span-2">
+                          <Label htmlFor="billingAddress1">Billing Address Line 1</Label>
+                          <Input
+                            id="billingAddress1"
+                            value={formData.billingAddress1}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, billingAddress1: e.target.value }))}
+                            placeholder="Street / House number"
+                            className="mt-1.5"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label htmlFor="billingAddress2">Billing Address Line 2 (Optional)</Label>
+                          <Input
+                            id="billingAddress2"
+                            value={formData.billingAddress2}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, billingAddress2: e.target.value }))}
+                            placeholder="Apartment / Landmark"
+                            className="mt-1.5"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="billingCity">City</Label>
+                          <Input
+                            id="billingCity"
+                            value={formData.billingCity}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, billingCity: e.target.value }))}
+                            placeholder="Kigali"
+                            className="mt-1.5"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="billingPostalCode">Postal Code</Label>
+                          <Input
+                            id="billingPostalCode"
+                            value={formData.billingPostalCode}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, billingPostalCode: e.target.value }))}
+                            placeholder="00000"
+                            className="mt-1.5"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label htmlFor="billingCountry">Billing Country</Label>
+                          <select
+                            id="billingCountry"
+                            value={formData.billingCountry}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, billingCountry: e.target.value }))}
+                            className="mt-1.5 h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          >
+                            {BILLING_COUNTRY_OPTIONS.map((country) => (
+                              <option key={country.code} value={country.code}>
+                                {country.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -1954,7 +2172,7 @@ export default function CheckoutNew() {
                             {(paymentMethod === 'card' || paymentMethod === 'bank') && (
                               <p className="text-sm text-muted-foreground">
                                 {paymentMethod === 'card'
-                                  ? 'Redirect to Pesapal secure card checkout'
+                                  ? 'Secure hover window (no iframe styling)'
                                   : 'Agent will call you'}
                               </p>
                             )}
@@ -1966,32 +2184,23 @@ export default function CheckoutNew() {
 
                   {/* Card/Bank notice */}
                   {(paymentMethod === 'card' || paymentMethod === 'bank') && (
-                    <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl p-4">
+                    <div className="rounded-xl border border-border bg-card p-4">
                       <div className="flex gap-3">
-                        <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        {paymentMethod === 'card' ? (
+                          <LockKeyhole className="w-5 h-5 text-foreground shrink-0 mt-0.5" />
+                        ) : (
+                          <Clock className="w-5 h-5 text-foreground shrink-0 mt-0.5" />
+                        )}
                         <div className="text-sm">
-                          <p className="font-medium text-amber-700 dark:text-amber-300 mb-1">
-                            {paymentMethod === 'card' ? 'Payment processing notice' : 'Expect a call within 5 minutes'}
+                          <p className="font-medium text-foreground mb-1">
+                            {paymentMethod === 'card' ? 'Secure payment step' : 'Bank transfer follow-up'}
                           </p>
-                          <p className="text-amber-600 dark:text-amber-400">
+                          <p className="text-muted-foreground">
                             {paymentMethod === 'card'
-                              ? <>After clicking "Confirm Booking", you will be redirected to <span className="font-medium">Pesapal</span> to enter card details and pay securely.</>
-                              : <>After clicking "Confirm Booking", our payment team will call you at <span className="font-medium">{formData.email}</span> to complete your bank transfer payment securely.</>}
+                              ? <>After clicking "Pay", a secure hover window opens in this tab for Pesapal card checkout (no iframe styling controls from our side).</>
+                              : <>After clicking "Pay", our payment team will call you at <span className="font-medium text-foreground">{formData.email}</span> to complete your bank transfer.</>}
                           </p>
-                          <div className="mt-2 pt-2 border-t border-amber-200 dark:border-amber-800/50 space-y-1">
-                            <p className="flex items-center gap-2">
-                              <Phone className="w-4 h-4" />
-                              <a href="tel:+250796214719" className="font-medium hover:underline">+250 796 214 719</a>
-                            </p>
-                            <p className="flex items-center gap-2">
-                              <MessageCircle className="w-4 h-4" />
-                              <a href="https://wa.me/250796214719" target="_blank" rel="noreferrer" className="font-medium hover:underline">WhatsApp</a>
-                            </p>
-                            <p className="flex items-center gap-2">
-                              <Mail className="w-4 h-4" />
-                              <a href="mailto:support@merry360x.com" className="font-medium hover:underline">support@merry360x.com</a>
-                            </p>
-                          </div>
+                          <p className="text-xs text-muted-foreground mt-2">Need help: +250 796 214 719</p>
                         </div>
                       </div>
                     </div>

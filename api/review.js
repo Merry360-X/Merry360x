@@ -212,9 +212,11 @@ async function handleSubmitReview(req, res) {
   if (req.method !== "POST") return json(res, 405, { error: "Method not allowed" });
 
   try {
-    const { token, accommodationRating, accommodationComment, serviceRating, serviceComment } = req.body;
+    const { token, reviewerName, accommodationRating, accommodationComment, serviceRating, serviceComment } = req.body;
+    const normalizedReviewerName = String(reviewerName || "").trim();
 
     if (!token) return json(res, 400, { error: "Missing token" });
+    if (!normalizedReviewerName) return json(res, 400, { error: "Reviewer name is required" });
     if (!accommodationRating || accommodationRating < 1 || accommodationRating > 5) {
       return json(res, 400, { error: "Accommodation rating must be 1-5" });
     }
@@ -252,7 +254,9 @@ async function handleSubmitReview(req, res) {
         property_id: manualRequest.property_id,
         reviewer_id: null,
         rating: accommodationRating,
-        comment: accommodationComment?.trim() || null,
+        comment: accommodationComment?.trim()
+          ? `Reviewed by ${normalizedReviewerName}.\n\n${accommodationComment.trim()}`
+          : `Reviewed by ${normalizedReviewerName}.`,
         service_rating: serviceRating || null,
         service_comment: serviceComment?.trim() || null,
         is_hidden: false,
@@ -266,13 +270,14 @@ async function handleSubmitReview(req, res) {
 
       if (insertErr || !insertedReview) {
         console.error("❌ Manual review insert error:", insertErr);
-        return json(res, 500, { error: "Failed to save review" });
+        return json(res, 500, { error: String(insertErr?.message || "Failed to save review") });
       }
 
       await supabase
         .from("manual_review_requests")
         .update({
           request_status: "collected",
+          reviewer_name: normalizedReviewerName,
           collected_at: new Date().toISOString(),
           review_id: insertedReview.id,
         })
@@ -295,22 +300,66 @@ async function handleSubmitReview(req, res) {
       return json(res, 409, { error: "You have already reviewed this booking" });
     }
 
-    const reviewData = {
-      booking_id: booking.id,
-      property_id: booking.property_id || booking.tour_id || booking.transport_id,
-      reviewer_id: booking.guest_id,
-      rating: accommodationRating,
-      comment: accommodationComment?.trim() || null,
-      service_rating: serviceRating || null,
-      service_comment: serviceComment?.trim() || null,
-      is_hidden: false,
-    };
+    const reviewComment = accommodationComment?.trim()
+      ? `Reviewed by ${normalizedReviewerName}.\n\n${accommodationComment.trim()}`
+      : `Reviewed by ${normalizedReviewerName}.`;
 
-    const { error: insertErr } = await supabase.from("property_reviews").insert(reviewData);
+    if (booking.property_id) {
+      const reviewData = {
+        booking_id: booking.id,
+        property_id: booking.property_id,
+        reviewer_id: booking.guest_id,
+        rating: accommodationRating,
+        comment: reviewComment,
+        service_rating: serviceRating || null,
+        service_comment: serviceComment?.trim() || null,
+        is_hidden: false,
+      };
 
-    if (insertErr) {
-      console.error("❌ Review insert error:", insertErr);
-      return json(res, 500, { error: "Failed to save review" });
+      const { error: insertErr } = await supabase.from("property_reviews").insert(reviewData);
+
+      if (insertErr) {
+        if (insertErr.code === "23505") {
+          const { error: updateErr } = await supabase
+            .from("property_reviews")
+            .update({
+              booking_id: booking.id,
+              rating: accommodationRating,
+              comment: reviewComment,
+              service_rating: serviceRating || null,
+              service_comment: serviceComment?.trim() || null,
+              is_hidden: false,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("property_id", booking.property_id)
+            .eq("reviewer_id", booking.guest_id);
+
+          if (updateErr) {
+            console.error("❌ Property review update after duplicate error:", updateErr);
+            return json(res, 500, { error: String(updateErr?.message || "Failed to save review") });
+          }
+        } else {
+          console.error("❌ Property review insert error:", insertErr);
+          return json(res, 500, { error: String(insertErr?.message || "Failed to save review") });
+        }
+      }
+    } else {
+      const genericReviewData = {
+        booking_id: booking.id,
+        property_id: null,
+        tour_id: booking.tour_id || null,
+        transport_id: booking.transport_id || null,
+        user_id: booking.guest_id,
+        rating: accommodationRating,
+        comment: reviewComment,
+        is_hidden: false,
+      };
+
+      const { error: insertErr } = await supabase.from("reviews").insert(genericReviewData);
+      if (insertErr) {
+        console.error("❌ Generic review insert error:", insertErr);
+        return json(res, 500, { error: String(insertErr?.message || "Failed to save review") });
+      }
     }
 
     // Regenerate token (one-time use)

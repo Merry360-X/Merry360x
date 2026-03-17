@@ -31,6 +31,7 @@ export default function ReviewPage() {
   const [accComment, setAccComment] = useState("");
   const [svcRating, setSvcRating] = useState(0);
   const [svcComment, setSvcComment] = useState("");
+  const [reviewerName, setReviewerName] = useState("");
   const [accHover, setAccHover] = useState(0);
   const [svcHover, setSvcHover] = useState(0);
 
@@ -49,6 +50,7 @@ export default function ReviewPage() {
           setAlreadyReviewed(true);
         } else {
           setBookingData(data);
+          setReviewerName(String(data?.booking?.guestName || "").trim());
         }
       })
       .catch(() => setError("Failed to load booking details"))
@@ -57,6 +59,11 @@ export default function ReviewPage() {
 
   const handleSubmit = async () => {
     if (accRating < 1) return;
+    const normalizedReviewerName = reviewerName.trim();
+    if (!normalizedReviewerName) {
+      setError("Please enter your name before submitting your review.");
+      return;
+    }
     setSubmitting(true);
     try {
       const resp = await fetch("/api/review", {
@@ -64,6 +71,7 @@ export default function ReviewPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token,
+          reviewerName: normalizedReviewerName,
           accommodationRating: accRating,
           accommodationComment: accComment.trim() || undefined,
           serviceRating: svcRating > 0 ? svcRating : undefined,
@@ -230,6 +238,20 @@ export default function ReviewPage() {
                     <MapPin className="w-3 h-3" /> {bookingData.item.location}
                   </p>
                 )}
+
+                <div className="mb-5">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Your name
+                  </label>
+                  <input
+                    type="text"
+                    value={reviewerName}
+                    onChange={(e) => setReviewerName(e.target.value)}
+                    placeholder="Enter your name"
+                    maxLength={80}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-pink-200 focus:border-pink-300"
+                  />
+                </div>
 
                 {/* Accommodation Rating */}
                 <div className="mb-6">

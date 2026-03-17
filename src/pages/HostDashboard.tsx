@@ -492,6 +492,8 @@ export default function HostDashboard() {
     pendingRwf: 0,
     completedRwf: 0,
   });
+  const [dbNetEarningsRwf, setDbNetEarningsRwf] = useState<number | null>(null);
+  const [dbAvailableForPayoutRwf, setDbAvailableForPayoutRwf] = useState<number | null>(null);
 
   // Manual adjustments to host earnings (e.g. admin credits)
   const [earningsAdjustmentsRwf, setEarningsAdjustmentsRwf] = useState(0);
@@ -1072,9 +1074,9 @@ export default function HostDashboard() {
     }
   }, [isHost, user, fetchData, authLoading, rolesLoading]);
 
-  const fetchHostPayoutData = useCallback(async (hostId: string) => {
+  const fetchHostPayoutSnapshot = useCallback(async (hostId: string) => {
     try {
-      const [{ data: recentPayouts }, { data: payoutRows }] = await Promise.all([
+      const [{ data: recentPayouts }, { data: snapshotRows }] = await Promise.all([
         supabase
           .from('host_payouts')
           .select('*')
@@ -1082,44 +1084,58 @@ export default function HostDashboard() {
           .order('created_at', { ascending: false })
           .limit(10),
         supabase
-          .from('host_payouts')
-          .select('amount,currency,status')
-          .eq('host_id', hostId),
+          .rpc('get_host_payout_snapshot', { p_host_id: hostId }),
       ]);
 
       setPayoutHistory(recentPayouts || []);
 
-      const pendingRwf = (payoutRows || [])
-        .filter((p) => p.status === 'pending' || p.status === 'processing')
-        .reduce((sum, p) => sum + toRwfAmount(Number(p.amount || 0), p.currency || 'RWF'), 0);
+      const snapshot = Array.isArray(snapshotRows) ? snapshotRows[0] : null;
+      if (snapshot) {
+        const pendingRwf = Number(snapshot.pending_payouts_rwf || 0);
+        const completedRwf = Number(snapshot.completed_payouts_rwf || 0);
+        const creditsRwf = Number(snapshot.credits_rwf || 0);
+        const netEarningsRwf = Number(snapshot.net_earnings_rwf || 0);
+        const availableRwf = Number(snapshot.available_for_payout_rwf || 0);
 
-      const completedRwf = (payoutRows || [])
-        .filter((p) => p.status === 'completed')
-        .reduce((sum, p) => sum + toRwfAmount(Number(p.amount || 0), p.currency || 'RWF'), 0);
-
-      setPayoutTotals({ pendingRwf, completedRwf });
+        setPayoutTotals({ pendingRwf, completedRwf });
+        setEarningsAdjustmentsRwf(creditsRwf);
+        setDbNetEarningsRwf(netEarningsRwf);
+        setDbAvailableForPayoutRwf(availableRwf);
+      }
     } catch (e) {
-      console.error('Failed to fetch payout history/totals:', e);
-    }
-  }, [toRwfAmount]);
+      console.error('Failed to fetch payout snapshot:', e);
 
-  const fetchHostEarningsAdjustments = useCallback(async (hostId: string) => {
-    try {
-      const { data: rows, error } = await supabase
-        .from('host_earnings_adjustments')
-        .select('amount,currency')
-        .eq('host_id', hostId);
+      // Fallback path while RPC is not yet available in some environments.
+      try {
+        const [{ data: payoutRows }, { data: adjustmentRows }] = await Promise.all([
+          supabase
+            .from('host_payouts')
+            .select('amount,currency,status')
+            .eq('host_id', hostId),
+          supabase
+            .from('host_earnings_adjustments')
+            .select('amount,currency')
+            .eq('host_id', hostId),
+        ]);
 
-      if (error) throw error;
+        const pendingRwf = (payoutRows || [])
+          .filter((p) => p.status === 'pending' || p.status === 'processing')
+          .reduce((sum, p) => sum + toRwfAmount(Number(p.amount || 0), p.currency || 'RWF'), 0);
 
-      const totalRwf = (rows || []).reduce((sum, row: any) => {
-        return sum + toRwfAmount(Number(row.amount || 0), row.currency || 'RWF');
-      }, 0);
+        const completedRwf = (payoutRows || [])
+          .filter((p) => p.status === 'completed')
+          .reduce((sum, p) => sum + toRwfAmount(Number(p.amount || 0), p.currency || 'RWF'), 0);
 
-      setEarningsAdjustmentsRwf(totalRwf);
-    } catch (e) {
-      console.error('Failed to fetch host earnings adjustments:', e);
-      setEarningsAdjustmentsRwf(0);
+        const creditsRwf = (adjustmentRows || [])
+          .reduce((sum, row: any) => sum + toRwfAmount(Number(row.amount || 0), row.currency || 'RWF'), 0);
+
+        setPayoutTotals({ pendingRwf, completedRwf });
+        setEarningsAdjustmentsRwf(creditsRwf);
+        setDbNetEarningsRwf(null);
+        setDbAvailableForPayoutRwf(null);
+      } catch (fallbackError) {
+        console.error('Fallback payout snapshot fetch failed:', fallbackError);
+      }
     }
   }, [toRwfAmount]);
 
@@ -1129,10 +1145,9 @@ export default function HostDashboard() {
     // Recompute both booking-derived earnings and payout-derived deductions from source tables.
     await Promise.all([
       fetchData(),
-      fetchHostPayoutData(user.id),
-      fetchHostEarningsAdjustments(user.id),
+      fetchHostPayoutSnapshot(user.id),
     ]);
-  }, [user, fetchData, fetchHostPayoutData, fetchHostEarningsAdjustments]);
+  }, [user, fetchData, fetchHostPayoutSnapshot]);
 
   useEffect(() => {
     if (!user) return;
@@ -1231,7 +1246,7 @@ export default function HostDashboard() {
         filter: `host_id=eq.${user.id}`,
       }, () => {
         console.log('[HostDashboard] Payout change detected');
-        fetchHostPayoutData(user.id);
+        fetchHostPayoutSnapshot(user.id);
       })
       .subscribe();
     channels.push(payoutsChannel);
@@ -1246,7 +1261,7 @@ export default function HostDashboard() {
         filter: `host_id=eq.${user.id}`,
       }, () => {
         console.log('[HostDashboard] Earnings adjustment change detected');
-        fetchHostEarningsAdjustments(user.id);
+        fetchHostPayoutSnapshot(user.id);
       })
       .subscribe();
     channels.push(adjustmentsChannel);
@@ -1254,7 +1269,7 @@ export default function HostDashboard() {
     return () => {
       channels.forEach(channel => supabase.removeChannel(channel));
     };
-  }, [user, fetchData, fetchHostPayoutData, fetchHostEarningsAdjustments]);
+  }, [user, fetchData, fetchHostPayoutSnapshot]);
 
   // Track if we've already checked the profile on this page load
   const [profileChecked, setProfileChecked] = useState(false);
@@ -1380,7 +1395,7 @@ export default function HostDashboard() {
         }
 
         // Fetch payout history
-        await fetchHostPayoutData(user.id);
+        await fetchHostPayoutSnapshot(user.id);
 
         // Fetch payout methods
         const { data: methods } = await supabase
@@ -1397,7 +1412,7 @@ export default function HostDashboard() {
       }
     };
     fetchPayoutInfo();
-  }, [user, fetchHostPayoutData]);
+  }, [user, fetchHostPayoutSnapshot]);
 
   useEffect(() => {
     if (!payoutMethods.length) {
@@ -1559,7 +1574,7 @@ export default function HostDashboard() {
       setPayoutAmount('');
       
       // Refresh payout history
-      await fetchHostPayoutData(user.id);
+      await fetchHostPayoutSnapshot(user.id);
     } catch (e) {
       logError('host.payout.request', e);
       toast({ variant: 'destructive', title: 'Failed to submit request', description: uiErrorMessage(e) });
@@ -2969,10 +2984,15 @@ export default function HostDashboard() {
   const confirmedBookings = (bookings || []).filter((b) => {
     const status = String(b.status || "").toLowerCase();
     const payment = normalizePaymentStatus(b);
+
+    // Some historical bookings remain in non-final booking statuses even when payment succeeded.
+    // Treat successful payment as eligible unless there is a refund signal.
+    const hasSuccessfulPayment = ["paid", "completed", "success", "successful", "captured"].includes(payment);
     const isConfirmed = status === "confirmed" || status === "completed";
     const isUnpaidFlow = ["failed", "pending", "requested", "unpaid", "not_paid", "expired"].includes(payment);
     const isRefundFlow = payment === "requested" || payment === "refunded" || payment.includes("refund");
-    return isConfirmed && !isRefundFlow && !isUnpaidFlow;
+
+    return (isConfirmed || hasSuccessfulPayment) && !isRefundFlow && !isUnpaidFlow;
   });
   
   // Gross earnings (what guests paid)
@@ -2981,11 +3001,13 @@ export default function HostDashboard() {
     return sum + toRwfAmount(amount, currency);
   }, 0);
   
-  // Net earnings using real host/provider fee rules by booking type
-  const totalNetEarnings = confirmedBookings.reduce((sum, b) => {
+  // Net earnings using real host/provider fee rules by booking type (fallback if DB snapshot unavailable)
+  const computedTotalNetEarnings = confirmedBookings.reduce((sum, b) => {
     const { amount: hostNetAmount, currency: bookingCurrency } = getHostNetEarningsForBooking(b);
     return sum + toRwfAmount(hostNetAmount, bookingCurrency);
   }, 0);
+
+  const totalNetEarnings = dbNetEarningsRwf ?? computedTotalNetEarnings;
   
   // Keep totalEarnings as booking-derived net earnings for display
   const totalEarnings = totalNetEarnings;
@@ -3001,13 +3023,11 @@ export default function HostDashboard() {
   const pendingBookings = pendingBookingGroupKeys.size;
   const publishedProperties = (properties || []).filter((p) => p.is_published).length;
 
-  // Available for payout = confirmed host net earnings + manual adjustments - completed payouts - pending/processing requests
+  // Available for payout = eligible host earnings + manual adjustments - completed payouts - pending/processing requests
   const pendingPayoutAmount = payoutTotals.pendingRwf;
   const completedPayoutAmount = payoutTotals.completedRwf;
-  const availableForPayout = Math.max(
-    0,
-    totalNetEarnings + earningsAdjustmentsRwf - completedPayoutAmount - pendingPayoutAmount
-  );
+  const totalEligibleEarnings = totalNetEarnings + earningsAdjustmentsRwf;
+  const availableForPayout = dbAvailableForPayoutRwf ?? Math.max(0, totalEligibleEarnings - completedPayoutAmount - pendingPayoutAmount);
 
   // Handle payout button click - always open combined dialog
   const handlePayoutClick = () => {
@@ -7467,8 +7487,14 @@ export default function HostDashboard() {
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
               <Card className="p-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                    <DollarSign className="w-5 h-5 text-green-600" />
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                      availableForPayout > 0 ? "bg-green-100" : "bg-muted"
+                    }`}
+                  >
+                    <DollarSign
+                      className={`w-5 h-5 ${availableForPayout > 0 ? "text-green-600" : "text-muted-foreground"}`}
+                    />
           </div>
                   <div className="flex-1">
                     <p className="text-sm text-muted-foreground">Available for payout</p>
@@ -7478,16 +7504,21 @@ export default function HostDashboard() {
                 </div>
                 <Button 
                   size="sm" 
+                  variant={availableForPayout > 0 ? "default" : "outline"}
                   className="w-full mt-3 gap-2" 
                   onClick={handlePayoutClick}
                   disabled={availableForPayout <= 0}
                 >
                   <Banknote className="w-4 h-4" />
-                  Request Payout
+                  {availableForPayout > 0 ? "Request Payout" : "No Payout Available"}
                 </Button>
+                {availableForPayout <= 0 && (
+                  <p className="mt-1.5 text-[11px] text-center text-muted-foreground">
+                    New confirmed earnings will appear here when eligible for withdrawal.
+                  </p>
+                )}
                 <div className="mt-2 text-xs text-center text-muted-foreground space-y-0.5">
-                  <p>Net earnings: {formatMoney(totalEarnings, "RWF")}</p>
-                  <p>Credits: {formatMoney(earningsAdjustmentsRwf, "RWF")}</p>
+                  <p>Net earnings: {formatMoney(totalEligibleEarnings, "RWF")}</p>
                   <p>Pending payouts: {formatMoney(pendingPayoutAmount, "RWF")}</p>
                   <p>Completed payouts: {formatMoney(completedPayoutAmount, "RWF")}</p>
                 </div>
