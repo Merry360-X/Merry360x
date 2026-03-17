@@ -7485,9 +7485,12 @@ export default function HostDashboard() {
                   <Banknote className="w-4 h-4" />
                   Request Payout
                 </Button>
-                <p className="text-xs text-center text-muted-foreground mt-2">
-                  Net earnings: {formatMoney(totalEarnings, "RWF")}
-                </p>
+                <div className="mt-2 text-xs text-center text-muted-foreground space-y-0.5">
+                  <p>Net earnings: {formatMoney(totalEarnings, "RWF")}</p>
+                  <p>Credits: {formatMoney(earningsAdjustmentsRwf, "RWF")}</p>
+                  <p>Pending payouts: {formatMoney(pendingPayoutAmount, "RWF")}</p>
+                  <p>Completed payouts: {formatMoney(completedPayoutAmount, "RWF")}</p>
+                </div>
               </Card>
               <Card className="p-4">
                 <div className="flex items-center gap-3">
