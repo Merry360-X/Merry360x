@@ -2987,8 +2987,8 @@ export default function HostDashboard() {
     return sum + toRwfAmount(hostNetAmount, bookingCurrency);
   }, 0);
   
-  // Keep totalEarnings as net earnings for display (plus any manual adjustments)
-  const totalEarnings = totalNetEarnings + earningsAdjustmentsRwf;
+  // Keep totalEarnings as booking-derived net earnings for display
+  const totalEarnings = totalNetEarnings;
   const isPendingBookingStatus = (status: string | null | undefined) =>
     status === "pending" || status === "pending_confirmation";
   const bookingGroupKeys = new Set((bookings || []).map((b) => b.order_id || b.id));
@@ -3001,10 +3001,13 @@ export default function HostDashboard() {
   const pendingBookings = pendingBookingGroupKeys.size;
   const publishedProperties = (properties || []).filter((p) => p.is_published).length;
 
-  // Available for payout = confirmed host net earnings - completed payouts - pending/processing requests
+  // Available for payout = confirmed host net earnings + manual adjustments - completed payouts - pending/processing requests
   const pendingPayoutAmount = payoutTotals.pendingRwf;
   const completedPayoutAmount = payoutTotals.completedRwf;
-  const availableForPayout = Math.max(0, totalEarnings - completedPayoutAmount - pendingPayoutAmount);
+  const availableForPayout = Math.max(
+    0,
+    totalNetEarnings + earningsAdjustmentsRwf - completedPayoutAmount - pendingPayoutAmount
+  );
 
   // Handle payout button click - always open combined dialog
   const handlePayoutClick = () => {
