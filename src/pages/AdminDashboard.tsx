@@ -560,7 +560,8 @@ export default function AdminDashboard() {
   const [adminFxRatesSaving, setAdminFxRatesSaving] = useState(false);
   const [adminFxRatesUpdatedAt, setAdminFxRatesUpdatedAt] = useState<string | null>(null);
 
-  const [analyticsRange, setAnalyticsRange] = useState<"1h" | "24h" | "7d" | "30d">("24h");
+  const [trafficAnalyticsRange, setTrafficAnalyticsRange] = useState<"1h" | "24h" | "7d" | "30d">("24h");
+  const [revenueAnalyticsRange, setRevenueAnalyticsRange] = useState<"12w" | "12m">("12w");
   const [analyticsChart, setAnalyticsChart] = useState<"traffic" | "revenue">("traffic");
 
   useEffect(() => {
@@ -802,9 +803,9 @@ export default function AdminDashboard() {
     isError: isWebAnalyticsSeriesError,
     error: webAnalyticsSeriesError,
   } = useQuery({
-    queryKey: ["admin_web_analytics_series", analyticsRange],
+    queryKey: ["admin_web_analytics_series", trafficAnalyticsRange],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("admin_web_analytics_series", { p_range: analyticsRange });
+      const { data, error } = await (supabase as any).rpc("admin_web_analytics_series", { p_range: trafficAnalyticsRange });
       if (error) throw error;
       return (data ?? []) as WebAnalyticsSeriesRow[];
     },
@@ -826,15 +827,24 @@ export default function AdminDashboard() {
   const formatAnalyticsBucket = useCallback(
     (iso: string) => {
       const d = new Date(iso);
-      if (analyticsRange === "7d" || analyticsRange === "30d") {
+
+      if (analyticsChart === "revenue") {
+        if (revenueAnalyticsRange === "12m") {
+          return d.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+        }
+        // 12w
         return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
       }
-      if (analyticsRange === "24h") {
+
+      if (trafficAnalyticsRange === "7d" || trafficAnalyticsRange === "30d") {
+        return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      }
+      if (trafficAnalyticsRange === "24h") {
         return d.toLocaleTimeString(undefined, { hour: "2-digit" });
       }
       return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
     },
-    [analyticsRange],
+    [analyticsChart, revenueAnalyticsRange, trafficAnalyticsRange],
   );
 
   const revenueChartConfig = useMemo<ChartConfig>(
@@ -1378,40 +1388,66 @@ export default function AdminDashboard() {
   });
 
   const analyticsRevenueSeries = useMemo(() => {
-    const now = Date.now();
-    const range = analyticsRange;
+    const now = new Date();
 
-    const bucketMs =
-      range === "1h"
-        ? 5 * 60_000
-        : range === "24h"
-          ? 60 * 60_000
-          : 24 * 60 * 60_000;
+    if (revenueAnalyticsRange === "12m") {
+      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      start.setUTCMonth(start.getUTCMonth() - 11);
 
-    const startMs =
-      range === "1h"
-        ? now - 60 * 60_000
-        : range === "7d"
-          ? now - 7 * 24 * 60 * 60_000
-          : range === "30d"
-            ? now - 30 * 24 * 60 * 60_000
-            : now - 24 * 60 * 60_000;
+      const buckets: Array<{ bucket: string; revenue_rwf: number; key: string }> = [];
+      const bucketIndex = new Map<string, number>();
 
+      const cursor = new Date(start);
+      for (let i = 0; i < 12; i++) {
+        const y = cursor.getUTCFullYear();
+        const m = cursor.getUTCMonth() + 1;
+        const key = `${y}-${String(m).padStart(2, "0")}`;
+        bucketIndex.set(key, buckets.length);
+        buckets.push({ bucket: cursor.toISOString(), revenue_rwf: 0, key });
+        cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+      }
+
+      for (const booking of bookings as any[]) {
+        const createdAt = booking?.created_at ? new Date(booking.created_at) : null;
+        if (!createdAt || Number.isNaN(createdAt.getTime())) continue;
+
+        const status = String(booking?.status ?? "").toLowerCase();
+        if (!(status === "confirmed" || status === "completed")) continue;
+
+        const amount = Number(booking?.total_price ?? 0);
+        if (!Number.isFinite(amount) || amount <= 0) continue;
+
+        const currency = String(booking?.currency ?? "RWF").toUpperCase();
+        const rwf = toRwfAmount(amount, currency);
+
+        const y = createdAt.getUTCFullYear();
+        const m = createdAt.getUTCMonth() + 1;
+        const key = `${y}-${String(m).padStart(2, "0")}`;
+        const idx = bucketIndex.get(key);
+        if (idx === undefined) continue;
+        buckets[idx].revenue_rwf += rwf;
+      }
+
+      return buckets.map(({ key: _key, ...b }) => ({ ...b, revenue_rwf: Math.round(b.revenue_rwf) }));
+    }
+
+    // 12w (weekly buckets)
+    const bucketMs = 7 * 24 * 60 * 60_000;
+    const startMs = now.getTime() - 12 * bucketMs;
     const startBucketMs = Math.floor(startMs / bucketMs) * bucketMs;
-    const endBucketMs = Math.floor(now / bucketMs) * bucketMs;
+    const endBucketMs = Math.floor(now.getTime() / bucketMs) * bucketMs;
 
     const buckets: Array<{ bucket: string; revenue_rwf: number }> = [];
     const bucketIndex = new Map<number, number>();
-
     for (let t = startBucketMs; t <= endBucketMs; t += bucketMs) {
       bucketIndex.set(t, buckets.length);
       buckets.push({ bucket: new Date(t).toISOString(), revenue_rwf: 0 });
     }
 
     for (const booking of bookings as any[]) {
-      const createdAt = booking?.created_at ? new Date(booking.created_at).getTime() : NaN;
-      if (!Number.isFinite(createdAt)) continue;
-      if (createdAt < startMs) continue;
+      const createdAtMs = booking?.created_at ? new Date(booking.created_at).getTime() : NaN;
+      if (!Number.isFinite(createdAtMs)) continue;
+      if (createdAtMs < startMs) continue;
 
       const status = String(booking?.status ?? "").toLowerCase();
       if (!(status === "confirmed" || status === "completed")) continue;
@@ -1422,15 +1458,14 @@ export default function AdminDashboard() {
       const currency = String(booking?.currency ?? "RWF").toUpperCase();
       const rwf = toRwfAmount(amount, currency);
 
-      const bucketKey = Math.floor(createdAt / bucketMs) * bucketMs;
+      const bucketKey = Math.floor(createdAtMs / bucketMs) * bucketMs;
       const idx = bucketIndex.get(bucketKey);
       if (idx === undefined) continue;
-
       buckets[idx].revenue_rwf += rwf;
     }
 
     return buckets.map((b) => ({ ...b, revenue_rwf: Math.round(b.revenue_rwf) }));
-  }, [analyticsRange, bookings]);
+  }, [bookings, revenueAnalyticsRange]);
 
   const analyticsConfig = analyticsChart === "revenue" ? revenueChartConfig : webAnalyticsChartConfig;
   const analyticsChartData = analyticsChart === "revenue" ? analyticsRevenueSeries : webAnalyticsSeries;
@@ -3804,15 +3839,33 @@ For support, contact: support@merry360x.com
                   </div>
 
                   <div className="w-full md:w-[200px]">
-                    <Select value={analyticsRange} onValueChange={(value) => setAnalyticsRange(value as any)}>
+                    <Select
+                      value={analyticsChart === "revenue" ? revenueAnalyticsRange : trafficAnalyticsRange}
+                      onValueChange={(value) => {
+                        if (analyticsChart === "revenue") {
+                          setRevenueAnalyticsRange(value as any);
+                        } else {
+                          setTrafficAnalyticsRange(value as any);
+                        }
+                      }}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Range" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="1h">Last 1 hour</SelectItem>
-                        <SelectItem value="24h">Last 24 hours</SelectItem>
-                        <SelectItem value="7d">Last 7 days</SelectItem>
-                        <SelectItem value="30d">Last 30 days</SelectItem>
+                        {analyticsChart === "revenue" ? (
+                          <>
+                            <SelectItem value="12w">Last 12 weeks</SelectItem>
+                            <SelectItem value="12m">Last 12 months</SelectItem>
+                          </>
+                        ) : (
+                          <>
+                            <SelectItem value="1h">Last 1 hour</SelectItem>
+                            <SelectItem value="24h">Last 24 hours</SelectItem>
+                            <SelectItem value="7d">Last 7 days</SelectItem>
+                            <SelectItem value="30d">Last 30 days</SelectItem>
+                          </>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
