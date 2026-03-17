@@ -1238,6 +1238,145 @@ export default function AdminDashboard() {
     refetchOnMount: 'always',
   });
 
+  // Bookings - direct query with enhanced loading
+  const { data: bookings = [], refetch: refetchBookings, isLoading: isBookingsLoading } = useQuery({
+    queryKey: ["admin-bookings-direct"],
+    queryFn: async () => {
+      const pageSize = 1000;
+      let from = 0;
+      const allRows: any[] = [];
+
+      while (true) {
+        const { data, error } = await supabase
+          .from("bookings")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .range(from, from + pageSize - 1);
+
+        if (error) {
+          console.error("Error fetching bookings:", error);
+          throw error;
+        }
+
+        const pageRows = data || [];
+        allRows.push(...pageRows);
+
+        if (pageRows.length < pageSize) {
+          break;
+        }
+
+        from += pageSize;
+      }
+
+      console.log("Bookings fetched:", allRows.length, "records");
+
+      // Fetch property, tour, transport, profile, and checkout details separately
+      const propertyIds = [...new Set(allRows.filter((b) => b.property_id).map((b) => b.property_id))];
+      const tourIds = [...new Set(allRows.filter((b) => b.tour_id).map((b) => b.tour_id))];
+      const transportIds = [...new Set(allRows.filter((b) => b.transport_id).map((b) => b.transport_id))];
+      const guestIds = [...new Set(allRows.filter((b) => b.guest_id && !b.is_guest_booking).map((b) => b.guest_id))];
+      const orderIds = [...new Set(allRows.filter((b) => b.order_id).map((b) => b.order_id))];
+
+      const chunk = <T,>(items: T[], size: number): T[][] => {
+        const chunks: T[][] = [];
+        for (let i = 0; i < items.length; i += size) {
+          chunks.push(items.slice(i, i + size));
+        }
+        return chunks;
+      };
+
+      const fetchInChunks = async <T,>(ids: string[], fetcher: (subset: string[]) => Promise<T[]>): Promise<T[]> => {
+        if (ids.length === 0) return [];
+        const subsets = chunk(ids, 200);
+        const results = await Promise.all(subsets.map((subset) => fetcher(subset)));
+        return results.flat();
+      };
+
+      const [properties, tours, vehicles, profiles, checkouts] = await Promise.all([
+        fetchInChunks(propertyIds, async (subset) => {
+          const { data } = await supabase
+            .from("properties")
+            .select("id, title, images, currency, host_id")
+            .in("id", subset);
+          return data || [];
+        }),
+        fetchInChunks(tourIds, async (subset) => {
+          const { data } = await supabase
+            .from("tour_packages")
+            .select("id, title, currency, host_id")
+            .in("id", subset);
+          return data || [];
+        }),
+        fetchInChunks(transportIds, async (subset) => {
+          const { data } = await supabase
+            .from("transport_vehicles")
+            .select("id, title, vehicle_type, currency, created_by")
+            .in("id", subset);
+          return data || [];
+        }),
+        fetchInChunks(guestIds, async (subset) => {
+          const { data } = await supabase
+            .from("profiles")
+            .select("id, full_name, nickname, email, phone")
+            .in("id", subset);
+          return data || [];
+        }),
+        fetchInChunks(orderIds, async (subset) => {
+          const { data } = await supabase
+            .from("checkout_requests")
+            .select("id, total_amount, currency, payment_method, payment_status, metadata")
+            .in("id", subset);
+          return data || [];
+        }),
+      ]);
+
+      // Map the data back to bookings
+      const enrichedData = allRows.map((booking) => {
+        const enriched = { ...booking };
+        if (booking.property_id) {
+          const property = properties.find((p) => p.id === booking.property_id) || null;
+          enriched.properties = property;
+          if (!enriched.host_id && property?.host_id) {
+            enriched.host_id = property.host_id;
+          }
+        }
+        if (booking.tour_id) {
+          const tour = tours.find((t) => t.id === booking.tour_id) || null;
+          enriched.tour_packages = tour;
+          if (!enriched.host_id && tour?.host_id) {
+            enriched.host_id = tour.host_id;
+          }
+        }
+        if (booking.transport_id) {
+          const vehicle = vehicles.find((v) => v.id === booking.transport_id) || null;
+          enriched.transport_vehicles = vehicle;
+          if (!enriched.host_id && vehicle?.created_by) {
+            enriched.host_id = vehicle.created_by;
+          }
+        }
+        if (booking.guest_id && !booking.is_guest_booking) {
+          enriched.profiles = profiles.find((p) => p.id === booking.guest_id) || null;
+        }
+        if (booking.order_id) {
+          enriched.checkout_requests = checkouts.find((c) => c.id === booking.order_id) || null;
+        }
+        return enriched;
+      });
+
+      return enrichedData as BookingRow[];
+    },
+    enabled:
+      tab === "bookings" ||
+      tab === "booking-calculations" ||
+      tab === "payments" ||
+      tab === "overview" ||
+      tab === "hosts",
+    staleTime: 1000 * 20,
+    gcTime: 1000 * 60 * 10,
+    refetchOnWindowFocus: true,
+    placeholderData: (previousData) => previousData,
+  });
+
   const analyticsRevenueSeries = useMemo(() => {
     const now = Date.now();
     const range = analyticsRange;
@@ -1318,133 +1457,6 @@ export default function AdminDashboard() {
     enabled: tab === "transport" || tab === "overview", // Also load for overview
     staleTime: 1000 * 30, // 30 seconds
     gcTime: 1000 * 60 * 20, // 20 minutes cache retention
-    refetchOnWindowFocus: true,
-    placeholderData: (previousData) => previousData,
-  });
-
-  // Bookings - direct query with enhanced loading
-  const { data: bookings = [], refetch: refetchBookings, isLoading: isBookingsLoading } = useQuery({
-    queryKey: ["admin-bookings-direct"],
-    queryFn: async () => {
-      const pageSize = 1000;
-      let from = 0;
-      const allRows: any[] = [];
-
-      while (true) {
-        const { data, error } = await supabase
-          .from("bookings")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .range(from, from + pageSize - 1);
-
-        if (error) {
-          console.error("Error fetching bookings:", error);
-          throw error;
-        }
-
-        const pageRows = data || [];
-        allRows.push(...pageRows);
-
-        if (pageRows.length < pageSize) {
-          break;
-        }
-
-        from += pageSize;
-      }
-
-      console.log("Bookings fetched:", allRows.length, "records");
-      
-      // Fetch property, tour, transport, profile, and checkout details separately
-      const propertyIds = [...new Set(allRows.filter(b => b.property_id).map(b => b.property_id))];
-      const tourIds = [...new Set(allRows.filter(b => b.tour_id).map(b => b.tour_id))];
-      const transportIds = [...new Set(allRows.filter(b => b.transport_id).map(b => b.transport_id))];
-      const guestIds = [...new Set(allRows.filter(b => b.guest_id && !b.is_guest_booking).map(b => b.guest_id))];
-      const orderIds = [...new Set(allRows.filter(b => b.order_id).map(b => b.order_id))];
-
-      const chunk = <T,>(items: T[], size: number): T[][] => {
-        const chunks: T[][] = [];
-        for (let i = 0; i < items.length; i += size) {
-          chunks.push(items.slice(i, i + size));
-        }
-        return chunks;
-      };
-
-      const fetchInChunks = async <T,>(ids: string[], fetcher: (subset: string[]) => Promise<T[]>): Promise<T[]> => {
-        if (ids.length === 0) return [];
-        const subsets = chunk(ids, 200);
-        const results = await Promise.all(subsets.map((subset) => fetcher(subset)));
-        return results.flat();
-      };
-
-      const [properties, tours, vehicles, profiles, checkouts] = await Promise.all([
-        fetchInChunks(propertyIds, async (subset) => {
-          const { data } = await supabase.from("properties").select("id, title, images, currency, host_id").in("id", subset);
-          return data || [];
-        }),
-        fetchInChunks(tourIds, async (subset) => {
-          const { data } = await supabase.from("tour_packages").select("id, title, currency, host_id").in("id", subset);
-          return data || [];
-        }),
-        fetchInChunks(transportIds, async (subset) => {
-          const { data } = await supabase.from("transport_vehicles").select("id, title, vehicle_type, currency, created_by").in("id", subset);
-          return data || [];
-        }),
-        fetchInChunks(guestIds, async (subset) => {
-          const { data } = await supabase.from("profiles").select("id, full_name, nickname, email, phone").in("id", subset);
-          return data || [];
-        }),
-        fetchInChunks(orderIds, async (subset) => {
-          const { data } = await supabase
-            .from("checkout_requests")
-            .select("id, total_amount, currency, payment_method, payment_status, metadata")
-            .in("id", subset);
-          return data || [];
-        }),
-      ]);
-      
-      // Map the data back to bookings
-      const enrichedData = allRows.map(booking => {
-        const enriched = { ...booking };
-        if (booking.property_id) {
-          const property = properties.find(p => p.id === booking.property_id) || null;
-          enriched.properties = property;
-          if (!enriched.host_id && property?.host_id) {
-            enriched.host_id = property.host_id;
-          }
-        }
-        if (booking.tour_id) {
-          const tour = tours.find(t => t.id === booking.tour_id) || null;
-          enriched.tour_packages = tour;
-          if (!enriched.host_id && tour?.host_id) {
-            enriched.host_id = tour.host_id;
-          }
-        }
-        if (booking.transport_id) {
-          const vehicle = vehicles.find(v => v.id === booking.transport_id) || null;
-          enriched.transport_vehicles = vehicle;
-          if (!enriched.host_id && vehicle?.created_by) {
-            enriched.host_id = vehicle.created_by;
-          }
-        }
-        if (booking.guest_id && !booking.is_guest_booking) {
-          enriched.profiles = profiles.find(p => p.id === booking.guest_id) || null;
-        }
-        if (booking.order_id) {
-          enriched.checkout_requests = checkouts.find(c => c.id === booking.order_id) || null;
-        }
-        return enriched;
-      });
-      
-      return enrichedData as BookingRow[];
-    },
-    enabled:
-      tab === "bookings" ||
-      tab === "booking-calculations" ||
-      tab === "payments" ||
-      tab === "overview" ||
-      tab === "hosts",
-    staleTime: 1000 * 20,
-    gcTime: 1000 * 60 * 10,
     refetchOnWindowFocus: true,
     placeholderData: (previousData) => previousData,
   });
