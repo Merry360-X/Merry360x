@@ -561,6 +561,7 @@ export default function AdminDashboard() {
   const [adminFxRatesUpdatedAt, setAdminFxRatesUpdatedAt] = useState<string | null>(null);
 
   const [analyticsRange, setAnalyticsRange] = useState<"1h" | "24h" | "7d" | "30d">("24h");
+  const [analyticsChart, setAnalyticsChart] = useState<"traffic" | "revenue">("traffic");
 
   useEffect(() => {
     const urlTab = new URLSearchParams(location.search).get("tab");
@@ -779,6 +780,8 @@ export default function AdminDashboard() {
   const {
     data: liveWebAnalytics,
     isLoading: isLiveWebAnalyticsLoading,
+    isError: isLiveWebAnalyticsError,
+    error: liveWebAnalyticsError,
   } = useQuery({
     queryKey: ["admin_web_analytics_live"],
     queryFn: async () => {
@@ -796,6 +799,8 @@ export default function AdminDashboard() {
   const {
     data: webAnalyticsSeries = [],
     isLoading: isWebAnalyticsSeriesLoading,
+    isError: isWebAnalyticsSeriesError,
+    error: webAnalyticsSeriesError,
   } = useQuery({
     queryKey: ["admin_web_analytics_series", analyticsRange],
     queryFn: async () => {
@@ -830,6 +835,13 @@ export default function AdminDashboard() {
       return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
     },
     [analyticsRange],
+  );
+
+  const revenueChartConfig = useMemo<ChartConfig>(
+    () => ({
+      revenue_rwf: { label: "Revenue (RWF)", color: "hsl(var(--primary))" },
+    }),
+    [],
   );
 
   const { data: adBanners = [], refetch: refetchAdBanners, isLoading: isAdsLoading } = useQuery({
@@ -1225,6 +1237,71 @@ export default function AdminDashboard() {
     refetchOnWindowFocus: true,
     refetchOnMount: 'always',
   });
+
+  const analyticsRevenueSeries = useMemo(() => {
+    const now = Date.now();
+    const range = analyticsRange;
+
+    const bucketMs =
+      range === "1h"
+        ? 5 * 60_000
+        : range === "24h"
+          ? 60 * 60_000
+          : 24 * 60 * 60_000;
+
+    const startMs =
+      range === "1h"
+        ? now - 60 * 60_000
+        : range === "7d"
+          ? now - 7 * 24 * 60 * 60_000
+          : range === "30d"
+            ? now - 30 * 24 * 60 * 60_000
+            : now - 24 * 60 * 60_000;
+
+    const startBucketMs = Math.floor(startMs / bucketMs) * bucketMs;
+    const endBucketMs = Math.floor(now / bucketMs) * bucketMs;
+
+    const buckets: Array<{ bucket: string; revenue_rwf: number }> = [];
+    const bucketIndex = new Map<number, number>();
+
+    for (let t = startBucketMs; t <= endBucketMs; t += bucketMs) {
+      bucketIndex.set(t, buckets.length);
+      buckets.push({ bucket: new Date(t).toISOString(), revenue_rwf: 0 });
+    }
+
+    for (const booking of bookings as any[]) {
+      const createdAt = booking?.created_at ? new Date(booking.created_at).getTime() : NaN;
+      if (!Number.isFinite(createdAt)) continue;
+      if (createdAt < startMs) continue;
+
+      const status = String(booking?.status ?? "").toLowerCase();
+      if (!(status === "confirmed" || status === "completed")) continue;
+
+      const amount = Number(booking?.total_price ?? 0);
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+
+      const currency = String(booking?.currency ?? "RWF").toUpperCase();
+      const rwf = toRwfAmount(amount, currency);
+
+      const bucketKey = Math.floor(createdAt / bucketMs) * bucketMs;
+      const idx = bucketIndex.get(bucketKey);
+      if (idx === undefined) continue;
+
+      buckets[idx].revenue_rwf += rwf;
+    }
+
+    return buckets.map((b) => ({ ...b, revenue_rwf: Math.round(b.revenue_rwf) }));
+  }, [analyticsRange, bookings]);
+
+  const analyticsConfig = analyticsChart === "revenue" ? revenueChartConfig : webAnalyticsChartConfig;
+  const analyticsChartData = analyticsChart === "revenue" ? analyticsRevenueSeries : webAnalyticsSeries;
+  const isAnalyticsLoading =
+    analyticsChart === "revenue"
+      ? isBookingsLoading
+      : isWebAnalyticsSeriesLoading || isLiveWebAnalyticsLoading;
+
+  const showAnalyticsNotConfigured =
+    analyticsChart === "traffic" && (isLiveWebAnalyticsError || isWebAnalyticsSeriesError);
 
   // Transport vehicles with images - enhanced loading
   const { data: vehicles = [], refetch: refetchVehicles, isLoading: isTransportLoading } = useQuery({
@@ -3701,62 +3778,126 @@ For support, contact: support@merry360x.com
                   <p className="text-xs text-muted-foreground">Live counts are last 15 minutes</p>
                 </div>
 
-                <div className="w-full md:w-[200px]">
-                  <Select value={analyticsRange} onValueChange={(value) => setAnalyticsRange(value as any)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Range" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1h">Last 1 hour</SelectItem>
-                      <SelectItem value="24h">Last 24 hours</SelectItem>
-                      <SelectItem value="7d">Last 7 days</SelectItem>
-                      <SelectItem value="30d">Last 30 days</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="w-full md:w-auto flex flex-col md:flex-row gap-2 md:items-center">
+                  <div className="w-full md:w-[200px]">
+                    <Select value={analyticsChart} onValueChange={(value) => setAnalyticsChart(value as any)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chart" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="traffic">Traffic</SelectItem>
+                        <SelectItem value="revenue">Revenue</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="w-full md:w-[200px]">
+                    <Select value={analyticsRange} onValueChange={(value) => setAnalyticsRange(value as any)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Range" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1h">Last 1 hour</SelectItem>
+                        <SelectItem value="24h">Last 24 hours</SelectItem>
+                        <SelectItem value="7d">Last 7 days</SelectItem>
+                        <SelectItem value="30d">Last 30 days</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                <div className="rounded-lg border p-3">
-                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                    <Users className="w-4 h-4" />
-                    <span className="text-sm">Visitors</span>
-                  </div>
-                  <p className="text-2xl font-bold text-foreground">
-                    {isLiveWebAnalyticsLoading ? "—" : liveWebAnalytics?.live_visitors ?? 0}
-                  </p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                    <Home className="w-4 h-4" />
-                    <span className="text-sm">Hosts</span>
-                  </div>
-                  <p className="text-2xl font-bold text-foreground">
-                    {isLiveWebAnalyticsLoading ? "—" : liveWebAnalytics?.live_hosts ?? 0}
-                  </p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                    <User className="w-4 h-4" />
-                    <span className="text-sm">Guests</span>
-                  </div>
-                  <p className="text-2xl font-bold text-foreground">
-                    {isLiveWebAnalyticsLoading ? "—" : liveWebAnalytics?.live_guests ?? 0}
-                  </p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                    <AlertTriangle className="w-4 h-4" />
-                    <span className="text-sm">Failed attempts</span>
-                  </div>
-                  <p className="text-2xl font-bold text-destructive">
-                    {isLiveWebAnalyticsLoading ? "—" : liveWebAnalytics?.failed_attempts ?? 0}
-                  </p>
-                </div>
-              </div>
+              {showAnalyticsNotConfigured && (
+                <Alert className="mb-4">
+                  <AlertDescription>
+                    Analytics is not configured in the database yet (missing `web_events` + RPCs). Apply the Supabase
+                    migration `20260316090000_create_web_events_analytics.sql` and refresh. Error: {uiErrorMessage(
+                      (webAnalyticsSeriesError as any) || (liveWebAnalyticsError as any),
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
 
-              <ChartContainer config={webAnalyticsChartConfig} className="w-full">
-                <AreaChart data={webAnalyticsSeries} margin={{ left: 12, right: 12, top: 8, bottom: 0 }}>
+              {analyticsChart === "traffic" ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                      <Users className="w-4 h-4" />
+                      <span className="text-sm">Visitors</span>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground">
+                      {isLiveWebAnalyticsLoading ? "—" : liveWebAnalytics?.live_visitors ?? 0}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                      <Home className="w-4 h-4" />
+                      <span className="text-sm">Hosts</span>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground">
+                      {isLiveWebAnalyticsLoading ? "—" : liveWebAnalytics?.live_hosts ?? 0}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                      <User className="w-4 h-4" />
+                      <span className="text-sm">Guests</span>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground">
+                      {isLiveWebAnalyticsLoading ? "—" : liveWebAnalytics?.live_guests ?? 0}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                      <AlertTriangle className="w-4 h-4" />
+                      <span className="text-sm">Failed attempts</span>
+                    </div>
+                    <p className="text-2xl font-bold text-destructive">
+                      {isLiveWebAnalyticsLoading ? "—" : liveWebAnalytics?.failed_attempts ?? 0}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                      <DollarSign className="w-4 h-4" />
+                      <span className="text-sm">Revenue (Gross)</span>
+                    </div>
+                    <p className="text-2xl font-bold text-primary">{formatMoney(displayedRevenueGross, "RWF")}</p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                      <DollarSign className="w-4 h-4" />
+                      <span className="text-sm">Platform Earnings</span>
+                    </div>
+                    <p className="text-2xl font-bold text-primary">
+                      {formatMoney(adminPaidFinancialOverview.earnedFromCharges, "RWF")}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                      <Wallet className="w-4 h-4" />
+                      <span className="text-sm">Host Earnings</span>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground">
+                      {formatMoney(adminHostNetEarningsTotal, "RWF")}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                      <Banknote className="w-4 h-4" />
+                      <span className="text-sm">Net Received</span>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground">
+                      {formatMoney(adminPaidFinancialOverview.totalAmountAfterPawapay, "RWF")}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <ChartContainer config={analyticsConfig} className="w-full">
+                <AreaChart data={analyticsChartData} margin={{ left: 12, right: 12, top: 8, bottom: 0 }}>
                   <CartesianGrid vertical={false} />
                   <XAxis
                     dataKey="bucket"
@@ -3767,28 +3908,55 @@ For support, contact: support@merry360x.com
                     tickFormatter={formatAnalyticsBucket}
                   />
                   <YAxis tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} />
-                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-                  <Area
-                    dataKey="page_views"
-                    type="monotone"
-                    stroke="var(--color-page_views)"
-                    fill="var(--color-page_views)"
-                    fillOpacity={0.2}
-                    strokeWidth={2}
+                  <ChartTooltip
+                    cursor={false}
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value, name) => {
+                          if (analyticsChart === "revenue" && name === "revenue_rwf") {
+                            return <span className="font-mono">{formatMoney(Number(value ?? 0), "RWF")}</span>;
+                          }
+                          return <span className="font-mono">{Number(value ?? 0).toLocaleString()}</span>;
+                        }}
+                      />
+                    }
                   />
-                  <Area
-                    dataKey="failed_attempts"
-                    type="monotone"
-                    stroke="var(--color-failed_attempts)"
-                    fill="var(--color-failed_attempts)"
-                    fillOpacity={0.12}
-                    strokeWidth={2}
-                  />
+
+                  {analyticsChart === "traffic" ? (
+                    <>
+                      <Area
+                        dataKey="page_views"
+                        type="monotone"
+                        stroke="var(--color-page_views)"
+                        fill="var(--color-page_views)"
+                        fillOpacity={0.2}
+                        strokeWidth={2}
+                      />
+                      <Area
+                        dataKey="failed_attempts"
+                        type="monotone"
+                        stroke="var(--color-failed_attempts)"
+                        fill="var(--color-failed_attempts)"
+                        fillOpacity={0.12}
+                        strokeWidth={2}
+                      />
+                    </>
+                  ) : (
+                    <Area
+                      dataKey="revenue_rwf"
+                      type="monotone"
+                      stroke="var(--color-revenue_rwf)"
+                      fill="var(--color-revenue_rwf)"
+                      fillOpacity={0.18}
+                      strokeWidth={2}
+                    />
+                  )}
+
                   <ChartLegend content={<ChartLegendContent />} />
                 </AreaChart>
               </ChartContainer>
 
-              {(isWebAnalyticsSeriesLoading || isLiveWebAnalyticsLoading) && (
+              {isAnalyticsLoading && (
                 <div className="mt-3 text-xs text-muted-foreground flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>Refreshing analytics…</span>
