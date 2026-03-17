@@ -7471,9 +7471,9 @@ export default function HostDashboard() {
                     <DollarSign className="w-5 h-5 text-green-600" />
           </div>
                   <div className="flex-1">
-                    <p className="text-sm text-muted-foreground">Net Earnings</p>
-                    <p className="text-xl font-bold">{formatMoney(totalEarnings, "RWF")}</p>
-                    <p className="text-xs text-muted-foreground">≈ {formatMoney(convertAmount(totalEarnings, 'RWF', 'USD', usdRates) ?? 0, 'USD')}</p>
+                    <p className="text-sm text-muted-foreground">Available for payout</p>
+                    <p className="text-xl font-bold">{formatMoney(availableForPayout, "RWF")}</p>
+                    <p className="text-xs text-muted-foreground">≈ {formatMoney(convertAmount(availableForPayout, 'RWF', 'USD', usdRates) ?? 0, 'USD')}</p>
                   </div>
                 </div>
                 <Button 
@@ -7485,11 +7485,9 @@ export default function HostDashboard() {
                   <Banknote className="w-4 h-4" />
                   Request Payout
                 </Button>
-                {availableForPayout > 0 && (
-                  <p className="text-xs text-center text-muted-foreground mt-2">
-                    Available: {formatMoney(availableForPayout, "RWF")} (≈ {formatMoney(convertAmount(availableForPayout, 'RWF', 'USD', usdRates) ?? 0, 'USD')})
-                  </p>
-                )}
+                <p className="text-xs text-center text-muted-foreground mt-2">
+                  Net earnings: {formatMoney(totalEarnings, "RWF")}
+                </p>
               </Card>
               <Card className="p-4">
                 <div className="flex items-center gap-3">
