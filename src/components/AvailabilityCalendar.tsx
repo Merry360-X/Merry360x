@@ -149,11 +149,24 @@ export default function AvailabilityCalendar({ propertyId, currency = "RWF", ref
       ...d,
       source: "blocked" as const
     }));
+
+    const dedupeByRange = (items: BlockedDate[]) => {
+      const byRange = new Map<string, BlockedDate>();
+      for (const item of items) {
+        const key = `${item.start_date}|${item.end_date}`;
+        if (!byRange.has(key)) {
+          byRange.set(key, item);
+        }
+      }
+      return Array.from(byRange.values());
+    };
+
+    const dedupedManualBlocks = dedupeByRange(manualBlocks);
     
     // Convert bookings to blocked date format, excluding those already in manual blocks
     const bookingBlocks: BlockedDate[] = (bookingsResult.data || [])
-      .filter(b => !manualBlocks.some(m => 
-        m.start_date === b.check_in && m.reason === "Booked"
+      .filter(b => !dedupedManualBlocks.some(m => 
+        m.start_date === b.check_in && m.end_date === toLastNightDate(b.check_in, b.check_out)
       ))
       .map(b => ({
         id: b.id,
@@ -165,8 +178,10 @@ export default function AvailabilityCalendar({ propertyId, currency = "RWF", ref
         source: "booking" as const
       }));
 
+    const dedupedBookingBlocks = dedupeByRange(bookingBlocks);
+
     // Combine and sort by start date
-    const allBlocked = [...manualBlocks, ...bookingBlocks].sort(
+    const allBlocked = [...dedupedManualBlocks, ...dedupedBookingBlocks].sort(
       (a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
     );
     
