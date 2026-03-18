@@ -933,20 +933,50 @@ export default function HostDashboard() {
         });
       }
       
-      // Fetch properties, tours, tour_packages, vehicles, routes
-      const [propsRes, toursRes, tourPackagesRes, vehiclesRes, routesRes] = await Promise.all([
-        supabase.from("properties").select("*").eq("host_id", user.id).order("created_at", { ascending: false }),
-        supabase.from("tours").select("*").eq("created_by", user.id).order("created_at", { ascending: false }),
-        supabase.from("tour_packages").select("*").eq("host_id", user.id).order("created_at", { ascending: false }),
-        supabase.from("transport_vehicles").select("*").eq("created_by", user.id).order("created_at", { ascending: false }),
-        supabase.from("transport_routes").select("*").order("created_at", { ascending: false }),
+      const fetchOwnedRows = async (table: string, ownerFields: string[]) => {
+        const byId = new Map<string, any>();
+        for (const field of ownerFields) {
+          const { data, error } = await (supabase as any)
+            .from(table)
+            .select("*")
+            .eq(field, user.id)
+            .order("created_at", { ascending: false });
+
+          if (error) {
+            const message = String(error.message || "").toLowerCase();
+            // Some environments have slightly different owner columns; skip unknown-column variants.
+            if (message.includes("column") && message.includes("does not exist")) {
+              continue;
+            }
+            if (error.code === "42703" || error.code === "PGRST204") {
+              continue;
+            }
+            throw error;
+          }
+
+          for (const row of data || []) {
+            if (row?.id && !byId.has(row.id)) {
+              byId.set(row.id, row);
+            }
+          }
+        }
+        return Array.from(byId.values());
+      };
+
+      // Fetch host-owned records across legacy/new owner columns.
+      const [propertiesRows, toursRows, tourPackageRows, vehiclesRows, routesRes] = await Promise.all([
+        fetchOwnedRows("properties", ["host_id", "created_by", "user_id"]),
+        fetchOwnedRows("tours", ["created_by", "host_id", "guide_id", "user_id"]),
+        fetchOwnedRows("tour_packages", ["host_id", "guide_id", "created_by", "user_id"]),
+        fetchOwnedRows("transport_vehicles", ["created_by", "host_id", "user_id"]),
+        supabase.from("transport_routes").select("*").eq("created_by", user.id).order("created_at", { ascending: false }),
       ]);
 
-      if (propsRes.data) setProperties(propsRes.data as Property[]);
+      if (propertiesRows) setProperties(propertiesRows as Property[]);
       
       // Build tours array from both sources
-      const toursWithSource = (toursRes.data as Tour[] || []).map(t => ({ ...t, source: "tours" as const }));
-      const packagesAsTours = (tourPackagesRes.data || []).map(pkg => ({
+      const toursWithSource = (toursRows as Tour[] || []).map(t => ({ ...t, source: "tours" as const }));
+      const packagesAsTours = (tourPackageRows || []).map(pkg => ({
         id: pkg.id,
         title: pkg.title,
         description: pkg.description,
@@ -990,15 +1020,15 @@ export default function HostDashboard() {
       // Replace entire tours array (don't append to prevent stale data)
       setTours([...toursWithSource, ...packagesAsTours as any]);
       
-      if (vehiclesRes.data) setVehicles(vehiclesRes.data as Vehicle[]);
+      if (vehiclesRows) setVehicles(vehiclesRows as Vehicle[]);
       if (routesRes.data) setRoutes(routesRes.data as TransportRoute[]);
 
       // Fetch bookings separately for properties, tours, and transport
-      const propertyIds = (propsRes.data || []).map((p: { id: string }) => p.id);
-      const tourIds = (toursRes.data || []).map((t: { id: string }) => t.id);
-      const tourPackageIds = (tourPackagesRes.data || []).map((t: { id: string }) => t.id);
+      const propertyIds = (propertiesRows || []).map((p: { id: string }) => p.id);
+      const tourIds = (toursRows || []).map((t: { id: string }) => t.id);
+      const tourPackageIds = (tourPackageRows || []).map((t: { id: string }) => t.id);
       const allTourIds = Array.from(new Set([...tourIds, ...tourPackageIds]));
-      const vehicleIds = (vehiclesRes.data || []).map((v: { id: string }) => v.id);
+      const vehicleIds = (vehiclesRows || []).map((v: { id: string }) => v.id);
       
       const bookingQueries = [];
       
@@ -1826,15 +1856,38 @@ export default function HostDashboard() {
     if (!user) return false;
     try {
       const tableName = source === "tour_packages" ? "tour_packages" : "tours";
-      const ownerField = tableName === "tour_packages" ? "host_id" : "created_by";
-      const { data: updatedRow, error } = await supabase
-        .from(tableName)
-        .update(updates)
-        .eq("id", id)
-        .eq(ownerField, user.id)
-        .select("id")
-        .maybeSingle();
-      if (error) throw error;
+      const ownerFields = tableName === "tour_packages"
+        ? ["host_id", "guide_id", "created_by", "user_id"]
+        : ["created_by", "host_id", "guide_id", "user_id"];
+
+      let updatedRow: { id: string } | null = null;
+      let lastError: any = null;
+
+      for (const ownerField of ownerFields) {
+        const { data, error } = await (supabase as any)
+          .from(tableName)
+          .update(updates)
+          .eq("id", id)
+          .eq(ownerField, user.id)
+          .select("id")
+          .maybeSingle();
+
+        if (error) {
+          const message = String(error.message || "").toLowerCase();
+          if ((message.includes("column") && message.includes("does not exist")) || error.code === "42703" || error.code === "PGRST204") {
+            continue;
+          }
+          lastError = error;
+          continue;
+        }
+
+        if (data?.id) {
+          updatedRow = data;
+          break;
+        }
+      }
+
+      if (lastError) throw lastError;
       if (!updatedRow?.id) {
         throw new Error("Tour update failed: listing not found or you don't have permission to edit it.");
       }
@@ -1852,30 +1905,48 @@ export default function HostDashboard() {
     
     try {
       const tableName = source || "tours";
-      const ownerField = tableName === "tour_packages" ? "host_id" : "created_by";
+      const ownerFields = tableName === "tour_packages"
+        ? ["host_id", "guide_id", "created_by", "user_id"]
+        : ["created_by", "host_id", "guide_id", "user_id"];
       
       console.log('[HostDashboard] Deleting from table:', tableName, 'ID:', id);
-      
-      // Delete from the correct table (RLS ensures user can only delete their own)
-      const { error: deleteError, count } = await supabase
-        .from(tableName)
-        .delete({ count: 'exact' })
-        .eq("id", id)
-        .eq(ownerField, user!.id); // Security: only delete if user owns it
-      
-      if (deleteError) {
-        console.error('[HostDashboard] Delete failed:', deleteError);
-        logError("host.tour.delete", deleteError);
-        toast({ 
-          variant: "destructive", 
-          title: "Delete failed", 
-          description: deleteError.message || uiErrorMessage(deleteError) 
+
+      let deletedCount = 0;
+      let lastError: any = null;
+
+      for (const ownerField of ownerFields) {
+        const { error, count } = await (supabase as any)
+          .from(tableName)
+          .delete({ count: 'exact' })
+          .eq("id", id)
+          .eq(ownerField, user!.id);
+
+        if (error) {
+          const message = String(error.message || "").toLowerCase();
+          if ((message.includes("column") && message.includes("does not exist")) || error.code === "42703" || error.code === "PGRST204") {
+            continue;
+          }
+          lastError = error;
+          continue;
+        }
+
+        deletedCount = Number(count || 0);
+        if (deletedCount > 0) break;
+      }
+
+      if (lastError && deletedCount === 0) {
+        console.error('[HostDashboard] Delete failed:', lastError);
+        logError("host.tour.delete", lastError);
+        toast({
+          variant: "destructive",
+          title: "Delete failed",
+          description: lastError.message || uiErrorMessage(lastError)
         });
         return;
       }
       
       // Check if anything was deleted
-      if (count === 0) {
+      if (deletedCount === 0) {
         console.warn('[HostDashboard] No tour was deleted - may not exist or not owned by user');
         toast({ 
           variant: "destructive", 
@@ -1885,7 +1956,7 @@ export default function HostDashboard() {
         return;
       }
       
-      console.log('[HostDashboard] Tour deleted successfully, count:', count);
+      console.log('[HostDashboard] Tour deleted successfully, count:', deletedCount);
       
       // Update local state
       setTours((prev) => prev.filter((t) => t.id !== id));
@@ -1938,9 +2009,9 @@ export default function HostDashboard() {
       media: data.media && data.media.length > 0 ? data.media : null,
       image_url: data.media && data.media.length > 0 ? data.media[0] : null,
       created_by: user!.id,
-      is_published: true, // Published by default
+      is_published: true,
     };
-    
+
     const { error, data: newVehicle } = await supabase
       .from("transport_vehicles")
       .insert(payload as never)
