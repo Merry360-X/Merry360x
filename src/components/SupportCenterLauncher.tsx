@@ -443,10 +443,11 @@ export default function SupportCenterLauncher() {
         }).catch(() => {});
 
         // Send confirmation email to customer
-        fetch("/api/ticket-confirmation-email", {
+        fetch("/api/support-email", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            action: "ticket_confirmation",
             ticketId: ticket.id,
             category: "general",
             subject: messageText.slice(0, 50),

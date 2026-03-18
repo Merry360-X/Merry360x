@@ -964,12 +964,12 @@ export default function HostDashboard() {
       };
 
       // Fetch host-owned records across legacy/new owner columns.
-      const [propertiesRows, toursRows, tourPackageRows, vehiclesRows, routesRes] = await Promise.all([
+      const [propertiesRows, toursRows, tourPackageRows, vehiclesRows, routesRows] = await Promise.all([
         fetchOwnedRows("properties", ["host_id", "created_by", "user_id"]),
         fetchOwnedRows("tours", ["created_by", "host_id", "guide_id", "user_id"]),
         fetchOwnedRows("tour_packages", ["host_id", "guide_id", "created_by", "user_id"]),
         fetchOwnedRows("transport_vehicles", ["created_by", "host_id", "user_id"]),
-        supabase.from("transport_routes").select("*").eq("created_by", user.id).order("created_at", { ascending: false }),
+        fetchOwnedRows("transport_routes", ["created_by", "host_id", "user_id"]),
       ]);
 
       if (propertiesRows) setProperties(propertiesRows as Property[]);
@@ -1021,7 +1021,7 @@ export default function HostDashboard() {
       setTours([...toursWithSource, ...packagesAsTours as any]);
       
       if (vehiclesRows) setVehicles(vehiclesRows as Vehicle[]);
-      if (routesRes.data) setRoutes(routesRes.data as TransportRoute[]);
+      if (routesRows) setRoutes(routesRows as TransportRoute[]);
 
       // Fetch bookings separately for properties, tours, and transport
       const propertyIds = (propertiesRows || []).map((p: { id: string }) => p.id);
@@ -1596,10 +1596,11 @@ export default function HostDashboard() {
           .eq('user_id', user.id)
           .single();
 
-        await fetch('/api/payout-notification', {
+        await fetch('/api/support-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            action: 'payout_notification',
             hostName: profileData?.full_name || user.email?.split('@')[0] || 'Host',
             hostEmail: profileData?.email || user.email,
             payoutId: createdPayout?.id,
@@ -2068,12 +2069,46 @@ export default function HostDashboard() {
 
   // Route CRUD (From → To)
   const updateRoute = async (id: string, updates: Partial<TransportRoute>) => {
-    const { error } = await supabase.from("transport_routes").update(updates as never).eq("id", id);
-    if (error) {
-      logError("host.route.update", error);
-      toast({ variant: "destructive", title: "Update failed", description: uiErrorMessage(error) });
+    if (!user) return false;
+
+    const ownerFields = ["created_by", "host_id", "user_id"];
+    let updatedRoute: { id: string } | null = null;
+    let lastError: any = null;
+
+    for (const ownerField of ownerFields) {
+      const { data, error } = await (supabase as any)
+        .from("transport_routes")
+        .update(updates)
+        .eq("id", id)
+        .eq(ownerField, user.id)
+        .select("id")
+        .maybeSingle();
+
+      if (error) {
+        const message = String(error.message || "").toLowerCase();
+        if ((message.includes("column") && message.includes("does not exist")) || error.code === "42703" || error.code === "PGRST204") {
+          continue;
+        }
+        lastError = error;
+        continue;
+      }
+
+      if (data?.id) {
+        updatedRoute = data;
+        break;
+      }
+    }
+
+    if (lastError) {
+      logError("host.route.update", lastError);
+      toast({ variant: "destructive", title: "Update failed", description: uiErrorMessage(lastError) });
       return false;
     }
+    if (!updatedRoute?.id) {
+      toast({ variant: "destructive", title: "Update failed", description: "Route not found or you do not have permission to edit it." });
+      return false;
+    }
+
     setRoutes((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
     toast({ title: "Saved" });
     return true;
@@ -2087,36 +2122,98 @@ export default function HostDashboard() {
     is_published: boolean;
   }) => {
     if (!user) return null;
-    const { data, error } = await supabase
-      .from("transport_routes")
-      .insert({
-        from_location: payload.from_location,
-        to_location: payload.to_location,
-        base_price: payload.base_price,
-        currency: payload.currency,
-        is_published: payload.is_published,
-        created_by: user.id,
-      } as never)
-      .select()
-      .single();
-    if (error) {
-      logError("host.route.create", error);
-      toast({ variant: "destructive", title: "Create failed", description: uiErrorMessage(error) });
+
+    const basePayload = {
+      from_location: payload.from_location,
+      to_location: payload.to_location,
+      base_price: payload.base_price,
+      currency: payload.currency,
+      is_published: payload.is_published,
+    };
+    const ownerFields = ["created_by", "host_id", "user_id"];
+
+    let createdRoute: TransportRoute | null = null;
+    let lastError: any = null;
+
+    for (const ownerField of ownerFields) {
+      const insertPayload = { ...basePayload, [ownerField]: user.id };
+      const { data, error } = await (supabase as any)
+        .from("transport_routes")
+        .insert(insertPayload)
+        .select()
+        .single();
+
+      if (error) {
+        const message = String(error.message || "").toLowerCase();
+        const isOwnerConstraint =
+          error.code === "23502" &&
+          (message.includes("host_id") || message.includes("created_by") || message.includes("user_id"));
+        if ((message.includes("column") && message.includes("does not exist")) || error.code === "42703" || error.code === "PGRST204" || isOwnerConstraint) {
+          continue;
+        }
+        lastError = error;
+        continue;
+      }
+
+      createdRoute = data as TransportRoute;
+      break;
+    }
+
+    if (!createdRoute) {
+      const createError = lastError || new Error("Failed to create route with available owner fields.");
+      logError("host.route.create", createError);
+      toast({ variant: "destructive", title: "Create failed", description: uiErrorMessage(createError) });
       return null;
     }
-    setRoutes((prev) => [data as TransportRoute, ...prev]);
+
+    setRoutes((prev) => [createdRoute as TransportRoute, ...prev]);
     toast({ title: "Route created" });
-    return data as TransportRoute;
+    return createdRoute as TransportRoute;
   };
 
   const deleteRoute = async (id: string) => {
     if (!confirm("Delete this route?")) return;
-    const { error } = await supabase.from("transport_routes").delete().eq("id", id);
-    if (error) {
-      logError("host.route.delete", error);
-      toast({ variant: "destructive", title: "Delete failed", description: uiErrorMessage(error) });
+
+    if (!user) {
+      toast({ variant: "destructive", title: "Delete failed", description: "You must be signed in to delete routes." });
       return;
     }
+
+    const ownerFields = ["created_by", "host_id", "user_id"];
+    let deletedCount = 0;
+    let lastError: any = null;
+
+    for (const ownerField of ownerFields) {
+      const { error, count } = await (supabase as any)
+        .from("transport_routes")
+        .delete({ count: "exact" })
+        .eq("id", id)
+        .eq(ownerField, user.id);
+
+      if (error) {
+        const message = String(error.message || "").toLowerCase();
+        if ((message.includes("column") && message.includes("does not exist")) || error.code === "42703" || error.code === "PGRST204") {
+          continue;
+        }
+        lastError = error;
+        continue;
+      }
+
+      deletedCount = Number(count || 0);
+      if (deletedCount > 0) break;
+    }
+
+    if (lastError && deletedCount === 0) {
+      logError("host.route.delete", lastError);
+      toast({ variant: "destructive", title: "Delete failed", description: uiErrorMessage(lastError) });
+      return;
+    }
+
+    if (deletedCount === 0) {
+      toast({ variant: "destructive", title: "Delete failed", description: "Route not found or you do not have permission to delete it." });
+      return;
+    }
+
     setRoutes((prev) => prev.filter((r) => r.id !== id));
     toast({ title: "Deleted" });
   };

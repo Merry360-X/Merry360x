@@ -589,10 +589,13 @@ export default function FinancialStaffDashboard() {
               status: payoutStatus,
             };
 
-            fetch("/api/payout-notification", {
+            fetch("/api/support-email", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(notificationPayload),
+              body: JSON.stringify({
+                action: "payout_notification",
+                ...notificationPayload,
+              }),
             }).catch((notificationError) => {
               console.error("Failed to send completed payout notification:", notificationError);
             });
@@ -643,10 +646,13 @@ export default function FinancialStaffDashboard() {
           status: "completed",
         };
 
-        fetch("/api/payout-notification", {
+        fetch("/api/support-email", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(notificationPayload),
+          body: JSON.stringify({
+            action: "payout_notification",
+            ...notificationPayload,
+          }),
         }).catch((notificationError) => {
           console.error("Failed to send completed payout notification:", notificationError);
         });

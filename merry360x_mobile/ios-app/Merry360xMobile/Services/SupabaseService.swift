@@ -41,6 +41,8 @@ struct MobileFinancialSummary {
     let cancelled: Int
     let unpaidCheckoutRequests: Int
     let refundedCheckoutRequests: Int
+    let revenueGross: Double
+    let revenueByCurrency: [(currency: String, amount: Double)]
 }
 
 struct MobileOperationsSummary {
@@ -61,6 +63,19 @@ struct MobileSupportSummary {
     let ticketsResolved: Int
     let ticketsClosed: Int
     let reviewsTotal: Int
+}
+
+struct MobileLiveWebAnalytics {
+    let liveVisitors: Int
+    let liveHosts: Int
+    let liveGuests: Int
+    let failedAttempts: Int
+}
+
+struct MobileWebAnalyticsSeriesPoint {
+    let bucket: String
+    let pageViews: Int
+    let failedAttempts: Int
 }
 
 struct MobileAffiliateAccount {
@@ -131,6 +146,7 @@ final class SupabaseService {
     private let apiBaseURL: String
     private let sessionUserIdKey = "mobile.auth.userId"
     private let sessionAccessTokenKey = "mobile.auth.accessToken"
+    private let sessionRefreshTokenKey = "mobile.auth.refreshToken"
 
     init?() {
         guard let url = URL(string: MobileConfig.supabaseUrl), MobileConfig.isConfigured else {
@@ -204,6 +220,37 @@ final class SupabaseService {
         return userId
     }
 
+    func fetchAuthenticatedUserIdentity() async throws -> (displayName: String?, email: String?) {
+        let url = baseURL.appendingPathComponent("auth/v1/user")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw NSError(domain: "SupabaseService", code: 9, userInfo: [NSLocalizedDescriptionKey: "Unable to fetch authenticated user"])
+        }
+
+        let json = (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        let email = (json["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let metadata = json["user_metadata"] as? [String: Any]
+
+        let candidateNames = [
+            metadata?["full_name"] as? String,
+            metadata?["name"] as? String,
+            metadata?["nickname"] as? String,
+            metadata?["preferred_username"] as? String
+        ]
+
+        let displayName = candidateNames
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+
+        let cleanedEmail = (email?.isEmpty == false) ? email : nil
+        return (displayName: displayName, email: cleanedEmail)
+    }
+
     func signIn(email: String, password: String) async throws -> MobileAuthSession {
         let url = baseURL.appendingPathComponent("auth/v1/token")
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
@@ -231,11 +278,12 @@ final class SupabaseService {
         let user = json?["user"] as? [String: Any]
         let userId = user?["id"] as? String
         let accessToken = json?["access_token"] as? String
+        let refreshToken = json?["refresh_token"] as? String
         guard let userId, let accessToken, !accessToken.isEmpty else {
             throw NSError(domain: "SupabaseService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Could not parse user id"])
         }
 
-        storeSession(userId: userId, accessToken: accessToken)
+        storeSession(userId: userId, accessToken: accessToken, refreshToken: refreshToken)
         return MobileAuthSession(userId: userId, accessToken: accessToken)
     }
 
@@ -261,17 +309,36 @@ final class SupabaseService {
         let session = json?["session"] as? [String: Any]
         let userId = user?["id"] as? String
         let accessToken = session?["access_token"] as? String
+        let refreshToken = session?["refresh_token"] as? String
 
         guard let userId else {
             throw NSError(domain: "SupabaseService", code: 4, userInfo: [NSLocalizedDescriptionKey: "Could not parse created user"])
         }
 
         if let accessToken, !accessToken.isEmpty {
-            storeSession(userId: userId, accessToken: accessToken)
+            storeSession(userId: userId, accessToken: accessToken, refreshToken: refreshToken)
             return MobileAuthSession(userId: userId, accessToken: accessToken)
         }
 
         throw NSError(domain: "SupabaseService", code: 5, userInfo: [NSLocalizedDescriptionKey: "Please verify your email before signing in"])
+    }
+
+    func requestPasswordReset(email: String, redirectTo: String = "merry360x://auth/callback") async throws {
+        let url = baseURL.appendingPathComponent("auth/v1/recover")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "email": email,
+            "redirect_to": redirectTo
+        ])
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw NSError(domain: "SupabaseService", code: 9, userInfo: [NSLocalizedDescriptionKey: "Unable to send reset link. Please try again."])
+        }
     }
 
     func getSessionUser() async throws -> String? {
@@ -321,23 +388,23 @@ final class SupabaseService {
         ]
         guard let url = components?.url else { return [] }
         var request = URLRequest(url: url)
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
-        let (data, _) = try await URLSession.shared.data(for: request)
+        request.httpMethod = "GET"
+        let data = try await performRequest(request)
         return (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
     }
 
     func fetchNotifications(userId: String) async throws -> [[String: Any]] {
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/notifications"), resolvingAgainstBaseURL: false)
         components?.queryItems = [
-            URLQueryItem(name: "select", value: "id,title,message,created_at"),
-            URLQueryItem(name: "user_id", value: "eq.\(userId)")
+            URLQueryItem(name: "select", value: "id,title,message,created_at,is_read"),
+            URLQueryItem(name: "user_id", value: "eq.\(userId)"),
+            URLQueryItem(name: "order", value: "created_at.desc"),
+            URLQueryItem(name: "limit", value: "50")
         ]
         guard let url = components?.url else { return [] }
         var request = URLRequest(url: url)
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
-        let (data, _) = try await URLSession.shared.data(for: request)
+        request.httpMethod = "GET"
+        let data = try await performRequest(request)
         return (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
     }
 
@@ -705,6 +772,10 @@ final class SupabaseService {
     }
 
     func fetchAdminOverviewMetrics() async throws -> MobileAdminMetrics {
+        if let rpcMetrics = try await fetchAdminOverviewMetricsViaRPC() {
+            return rpcMetrics
+        }
+
         async let usersTotal = countRows(table: "profiles")
         async let hostsTotal = countRows(table: "user_roles", filters: [URLQueryItem(name: "role", value: "eq.host")])
         async let storiesTotal = countRows(table: "stories")
@@ -764,6 +835,10 @@ final class SupabaseService {
     }
 
     func fetchFinancialSummary() async throws -> MobileFinancialSummary {
+        if let rpcSummary = try await fetchFinancialSummaryViaRPC() {
+            return rpcSummary
+        }
+
         let bookings = try await fetchRows(
             table: "bookings",
             select: "id,status,payment_status"
@@ -791,24 +866,31 @@ final class SupabaseService {
             paid: paid,
             cancelled: cancelled,
             unpaidCheckoutRequests: unpaidCheckout,
-            refundedCheckoutRequests: refundedCheckout
+            refundedCheckoutRequests: refundedCheckout,
+            revenueGross: 0,
+            revenueByCurrency: []
         )
     }
 
     func fetchOperationsSummary() async throws -> MobileOperationsSummary {
         let hostApplications = try await fetchRows(table: "host_applications", select: "id,status")
         let properties = try await fetchRows(table: "properties", select: "id,is_published")
-        let tours = try await fetchRows(table: "tours", select: "id,is_published")
+        let toursLegacy = (try? await fetchRows(table: "tours", select: "id,is_published")) ?? []
+        let tourPackages = (try? await fetchRows(table: "tour_packages", select: "id,status")) ?? []
         let transport = try await fetchRows(table: "transport_vehicles", select: "id")
         let bookings = try await fetchRows(table: "bookings", select: "id")
+
+        let toursTotal = toursLegacy.count + tourPackages.count
+        let toursPublished = toursLegacy.filter { ($0["is_published"] as? Bool) == true }.count +
+            tourPackages.filter { String(describing: $0["status"] ?? "").lowercased() == "approved" }.count
 
         return MobileOperationsSummary(
             hostApplicationsTotal: hostApplications.count,
             hostApplicationsPending: hostApplications.filter { String(describing: $0["status"] ?? "").lowercased() == "pending" }.count,
             propertiesTotal: properties.count,
             propertiesPublished: properties.filter { ($0["is_published"] as? Bool) == true }.count,
-            toursTotal: tours.count,
-            toursPublished: tours.filter { ($0["is_published"] as? Bool) == true }.count,
+            toursTotal: toursTotal,
+            toursPublished: toursPublished,
             transportVehiclesTotal: transport.count,
             bookingsTotal: bookings.count
         )
@@ -828,8 +910,15 @@ final class SupabaseService {
         )
     }
 
-    func fetchAdminUsers(limit: Int = 30) async throws -> [[String: Any]] {
-        try await fetchRows(
+    func fetchAdminUsers(limit: Int = 300) async throws -> [[String: Any]] {
+        if let rpcRows = try await fetchAdminUsersViaRPC() {
+            if rpcRows.count > limit {
+                return Array(rpcRows.prefix(limit))
+            }
+            return rpcRows
+        }
+
+        return try await fetchRows(
             table: "profiles",
             select: "user_id,full_name,email,phone,created_at,is_suspended,is_verified",
             filters: [
@@ -839,7 +928,7 @@ final class SupabaseService {
         )
     }
 
-    func fetchAdminHostApplications(limit: Int = 30) async throws -> [[String: Any]] {
+    func fetchAdminHostApplications(limit: Int = 300) async throws -> [[String: Any]] {
         try await fetchRows(
             table: "host_applications",
             select: "id,full_name,status,created_at,service_types,profile_complete,suspended,user_id",
@@ -850,10 +939,10 @@ final class SupabaseService {
         )
     }
 
-    func fetchAdminBookings(limit: Int = 40) async throws -> [[String: Any]] {
+    func fetchAdminBookings(limit: Int = 300) async throws -> [[String: Any]] {
         try await fetchRows(
             table: "bookings",
-            select: "id,order_id,status,payment_status,total_price,currency,guest_id,host_id,created_at,check_in,check_out",
+            select: "id,order_id,booking_type,property_id,tour_id,transport_id,status,payment_status,payment_method,total_price,currency,guest_id,guest_name,guest_email,host_id,created_at,check_in,check_out",
             filters: [
                 URLQueryItem(name: "order", value: "created_at.desc"),
                 URLQueryItem(name: "limit", value: String(limit))
@@ -861,7 +950,7 @@ final class SupabaseService {
         )
     }
 
-    func fetchAdminPayments(limit: Int = 40) async throws -> [[String: Any]] {
+    func fetchAdminPayments(limit: Int = 300) async throws -> [[String: Any]] {
         try await fetchRows(
             table: "checkout_requests",
             select: "id,name,email,total_amount,currency,payment_status,payment_method,created_at",
@@ -872,7 +961,7 @@ final class SupabaseService {
         )
     }
 
-    func fetchAdminPayouts(limit: Int = 40) async throws -> [[String: Any]] {
+    func fetchAdminPayouts(limit: Int = 300) async throws -> [[String: Any]] {
         try await fetchRows(
             table: "host_payouts",
             select: "id,host_id,status,amount,currency,payout_method,created_at",
@@ -883,10 +972,10 @@ final class SupabaseService {
         )
     }
 
-    func fetchAdminSupportTickets(limit: Int = 40) async throws -> [[String: Any]] {
+    func fetchAdminSupportTickets(limit: Int = 300) async throws -> [[String: Any]] {
         try await fetchRows(
             table: "support_tickets",
-            select: "id,subject,status,priority,user_id,user_email,created_at",
+            select: "id,subject,message,category,status,priority,response,user_id,user_email,created_at",
             filters: [
                 URLQueryItem(name: "order", value: "created_at.desc"),
                 URLQueryItem(name: "limit", value: String(limit))
@@ -894,7 +983,7 @@ final class SupabaseService {
         )
     }
 
-    func fetchAdminProperties(limit: Int = 40) async throws -> [[String: Any]] {
+    func fetchAdminProperties(limit: Int = 300) async throws -> [[String: Any]] {
         try await fetchRows(
             table: "properties",
             select: "id,title,location,price_per_night,currency,is_published,host_id,created_at",
@@ -905,18 +994,60 @@ final class SupabaseService {
         )
     }
 
-    func fetchAdminTours(limit: Int = 40) async throws -> [[String: Any]] {
-        try await fetchRows(
+    func fetchAdminTours(limit: Int = 300) async throws -> [[String: Any]] {
+        let toursLegacy = (try? await fetchRows(
             table: "tours",
             select: "id,title,location,price_per_person,currency,is_published,created_at",
             filters: [
                 URLQueryItem(name: "order", value: "created_at.desc"),
                 URLQueryItem(name: "limit", value: String(limit))
             ]
-        )
+        )) ?? []
+
+        let packages = (try? await fetchRows(
+            table: "tour_packages",
+            select: "id,title,city,country,price_per_adult,currency,status,created_at",
+            filters: [
+                URLQueryItem(name: "order", value: "created_at.desc"),
+                URLQueryItem(name: "limit", value: String(limit))
+            ]
+        )) ?? []
+
+        let normalizedLegacy = toursLegacy.map { row -> [String: Any] in
+            var mapped = row
+            mapped["source"] = "tours"
+            return mapped
+        }
+
+        let normalizedPackages = packages.map { row -> [String: Any] in
+            let city = (row["city"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let country = (row["country"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let location: String
+            if !city.isEmpty && !country.isEmpty {
+                location = "\(city), \(country)"
+            } else {
+                location = city.isEmpty ? country : city
+            }
+
+            let status = String(describing: row["status"] ?? "").lowercased()
+
+            return [
+                "id": row["id"] as? String ?? "",
+                "title": row["title"] as? String ?? "Tour Package",
+                "location": location,
+                "price_per_person": row["price_per_adult"] ?? 0,
+                "currency": row["currency"] as? String ?? "RWF",
+                "is_published": status == "approved",
+                "status": row["status"] as? String ?? "draft",
+                "created_at": row["created_at"] as? String ?? "",
+                "source": "tour_packages",
+            ]
+        }
+
+        return normalizedLegacy + normalizedPackages
     }
 
-    func fetchAdminTransportServices(limit: Int = 40) async throws -> [[String: Any]] {
+    func fetchAdminTransportServices(limit: Int = 300) async throws -> [[String: Any]] {
         try await fetchRows(
             table: "transport_vehicles",
             select: "id,service_type,location,price_per_day,price_per_hour,currency,is_published,created_by,created_at",
@@ -927,7 +1058,7 @@ final class SupabaseService {
         )
     }
 
-    func fetchAdminPropertyReviews(limit: Int = 40) async throws -> [[String: Any]] {
+    func fetchAdminPropertyReviews(limit: Int = 300) async throws -> [[String: Any]] {
         try await fetchRows(
             table: "property_reviews",
             select: "id,property_id,rating,review_text,status,created_at",
@@ -938,7 +1069,7 @@ final class SupabaseService {
         )
     }
 
-    func fetchAdminLegalContent(limit: Int = 40) async throws -> [[String: Any]] {
+    func fetchAdminLegalContent(limit: Int = 300) async throws -> [[String: Any]] {
         try await fetchRows(
             table: "legal_content",
             select: "id,content_type,title,updated_at,is_active",
@@ -949,10 +1080,10 @@ final class SupabaseService {
         )
     }
 
-    func fetchAdminAffiliates(limit: Int = 40) async throws -> [[String: Any]] {
+    func fetchAdminAffiliates(limit: Int = 300) async throws -> [[String: Any]] {
         try await fetchRows(
             table: "affiliates",
-            select: "id,user_id,affiliate_code,status,created_at",
+            select: "id,user_id,referral_code,affiliate_code,status,created_at",
             filters: [
                 URLQueryItem(name: "order", value: "created_at.desc"),
                 URLQueryItem(name: "limit", value: String(limit))
@@ -960,7 +1091,7 @@ final class SupabaseService {
         )
     }
 
-    func fetchAdminAds(limit: Int = 40) async throws -> [[String: Any]] {
+    func fetchAdminAds(limit: Int = 300) async throws -> [[String: Any]] {
         try await fetchRows(
             table: "homepage_banners",
             select: "id,title,placement,is_active,start_date,end_date,created_at",
@@ -969,6 +1100,64 @@ final class SupabaseService {
                 URLQueryItem(name: "limit", value: String(limit))
             ]
         )
+    }
+
+    func fetchAdminWebAnalyticsLive(windowMinutes: Int = 15) async throws -> MobileLiveWebAnalytics? {
+        let url = baseURL.appendingPathComponent("rest/v1/rpc/admin_web_analytics_live")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["window_minutes": windowMinutes])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            return nil
+        }
+
+        let any = try JSONSerialization.jsonObject(with: data)
+        let payload: [String: Any]?
+        if let dict = any as? [String: Any] {
+            payload = dict
+        } else if let rows = any as? [[String: Any]] {
+            payload = rows.first
+        } else {
+            payload = nil
+        }
+
+        guard let row = payload else { return nil }
+        return MobileLiveWebAnalytics(
+            liveVisitors: Int(number(row["live_visitors"]) ?? 0),
+            liveHosts: Int(number(row["live_hosts"]) ?? 0),
+            liveGuests: Int(number(row["live_guests"]) ?? 0),
+            failedAttempts: Int(number(row["failed_attempts"]) ?? 0)
+        )
+    }
+
+    func fetchAdminWebAnalyticsSeries(range: String = "24h") async throws -> [MobileWebAnalyticsSeriesPoint] {
+        let url = baseURL.appendingPathComponent("rest/v1/rpc/admin_web_analytics_series")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["p_range": range])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            return []
+        }
+
+        let rows = (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
+        return rows.compactMap { row in
+            guard let bucket = row["bucket"] as? String else { return nil }
+            return MobileWebAnalyticsSeriesPoint(
+                bucket: bucket,
+                pageViews: Int(number(row["page_views"]) ?? 0),
+                failedAttempts: Int(number(row["failed_attempts"]) ?? 0)
+            )
+        }
     }
 
     func updateHostApplicationStatus(applicationId: String, status: String) async throws {
@@ -990,11 +1179,19 @@ final class SupabaseService {
     }
 
     func updateSupportTicketStatus(ticketId: String, status: String) async throws {
+        try await updateSupportTicket(ticketId: ticketId, status: status)
+    }
+
+    func updateSupportTicket(ticketId: String, status: String, response: String? = nil) async throws {
+        var body: [String: Any] = ["status": status]
+        if let response, !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body["response"] = response
+        }
         try await updateRows(
             table: "support_tickets",
             matchColumn: "id",
             matchValue: ticketId,
-            body: ["status": status]
+            body: body
         )
     }
 
@@ -1016,6 +1213,32 @@ final class SupabaseService {
         )
     }
 
+    func applySupportRefundDecision(bookingId: String, orderId: String?, approve: Bool) async throws {
+        let body: [String: Any] = [
+            "status": approve ? "cancelled" : "confirmed",
+            "payment_status": approve ? "refunded" : "paid",
+            "updated_at": ISO8601DateFormatter().string(from: Date())
+        ]
+
+        let normalizedOrderId = orderId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !normalizedOrderId.isEmpty {
+            try await updateRows(
+                table: "bookings",
+                matchColumn: "order_id",
+                matchValue: normalizedOrderId,
+                body: body
+            )
+            return
+        }
+
+        try await updateRows(
+            table: "bookings",
+            matchColumn: "id",
+            matchValue: bookingId,
+            body: body
+        )
+    }
+
     func setPropertyPublished(propertyId: String, isPublished: Bool) async throws {
         try await updateRows(
             table: "properties",
@@ -1031,6 +1254,15 @@ final class SupabaseService {
             matchColumn: "id",
             matchValue: tourId,
             body: ["is_published": isPublished]
+        )
+    }
+
+    func setTourPackagePublished(packageId: String, isPublished: Bool) async throws {
+        try await updateRows(
+            table: "tour_packages",
+            matchColumn: "id",
+            matchValue: packageId,
+            body: ["status": isPublished ? "approved" : "draft"]
         )
     }
 
@@ -1113,8 +1345,14 @@ final class SupabaseService {
     }
 
     func createSupportTicket(userId: String, subject: String, message: String, category: String = "general") async throws -> MobileSupportTicket {
+        let identity = try? await fetchAuthenticatedUserIdentity()
+        let profile = try? await fetchProfileBasics(userId: userId)
+        let resolvedEmail = identity?.email ?? (profile?["email"] as? String)
+        let resolvedName = identity?.displayName ?? (profile?["full_name"] as? String)
+
         let body: [String: Any] = [
             "user_id": userId,
+            "user_email": resolvedEmail ?? NSNull(),
             "subject": subject,
             "message": message,
             "category": category,
@@ -1126,6 +1364,17 @@ final class SupabaseService {
         guard let row = rows.first, let id = row["id"] as? String else {
             throw NSError(domain: "SupabaseService", code: 93, userInfo: [NSLocalizedDescriptionKey: "Support ticket was created but no ticket id was returned"]) 
         }
+
+        // Intentionally fire-and-forget: ticket creation must succeed even if email notifications fail.
+        await notifySupportTicketEmails(
+            ticketId: id,
+            category: row["category"] as? String ?? category,
+            subject: row["subject"] as? String ?? subject,
+            message: row["message"] as? String ?? message,
+            userId: userId,
+            userEmail: resolvedEmail,
+            userName: resolvedName
+        )
 
         return MobileSupportTicket(
             id: id,
@@ -1186,6 +1435,18 @@ final class SupabaseService {
             throw NSError(domain: "SupabaseService", code: 94, userInfo: [NSLocalizedDescriptionKey: "Support message was sent but no message id was returned"]) 
         }
 
+        await markSupportTicketActive(ticketId: rowTicketId)
+        let identity = try? await fetchAuthenticatedUserIdentity()
+        await notifySupportTicketEmails(
+            ticketId: rowTicketId,
+            category: "chat_reply",
+            subject: "Customer reply",
+            message: text,
+            userId: userId,
+            userEmail: identity?.email,
+            userName: senderName
+        )
+
         return MobileSupportMessage(
             id: id,
             ticketId: rowTicketId,
@@ -1243,10 +1504,97 @@ final class SupabaseService {
         return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
 
+    func createPawaPayPayment(payload: [String: Any]) async throws -> [String: Any] {
+        guard let url = URL(string: "\(apiBaseURL)/api/pawapay-create-payment") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let body = (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            let message = (body["error"] as? String) ?? (body["message"] as? String) ?? "PawaPay payment initialization failed"
+            throw NSError(domain: "SupabaseService", code: 91, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+        return body
+    }
+
+    func checkPawaPayStatus(depositId: String, checkoutId: String?) async throws -> [String: Any] {
+        var components = URLComponents(string: "\(apiBaseURL)/api/pawapay-check-status")
+        var queryItems: [URLQueryItem] = [URLQueryItem(name: "depositId", value: depositId)]
+        if let checkoutId, !checkoutId.isEmpty {
+            queryItems.append(URLQueryItem(name: "checkoutId", value: checkoutId))
+        }
+        components?.queryItems = queryItems
+
+        guard let url = components?.url else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let body = (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            let message = (body["error"] as? String) ?? (body["message"] as? String) ?? "Could not check PawaPay status"
+            throw NSError(domain: "SupabaseService", code: 92, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+        return body
+    }
+
+    func createPesapalPayment(payload: [String: Any]) async throws -> [String: Any] {
+        guard let url = URL(string: "\(apiBaseURL)/api/pesapal") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let body = (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            let message = (body["error"] as? String) ?? (body["message"] as? String) ?? "Pesapal initialization failed"
+            throw NSError(domain: "SupabaseService", code: 93, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+        return body
+    }
+
+    func checkPesapalStatus(checkoutId: String, orderTrackingId: String?) async throws -> [String: Any] {
+        guard let url = URL(string: "\(apiBaseURL)/api/pesapal") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var payload: [String: Any] = [
+            "action": "check-status",
+            "checkoutId": checkoutId,
+        ]
+        if let orderTrackingId, !orderTrackingId.isEmpty {
+            payload["orderTrackingId"] = orderTrackingId
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let body = (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            let message = (body["error"] as? String) ?? (body["message"] as? String) ?? "Could not check Pesapal status"
+            throw NSError(domain: "SupabaseService", code: 94, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+        return body
+    }
+
     func fetchFeaturedListings(limit: Int = 20) async throws -> [Listing] {
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/properties"), resolvingAgainstBaseURL: false)
         components?.queryItems = [
             URLQueryItem(name: "select", value: "id,host_id,title,name,location,price_per_night,price_per_month,currency,is_published,monthly_only_listing,images,main_image,rating"),
+            URLQueryItem(name: "is_published", value: "eq.true"),
             URLQueryItem(name: "order", value: "created_at.desc"),
             URLQueryItem(name: "limit", value: String(limit))
         ]
@@ -1332,16 +1680,58 @@ final class SupabaseService {
         _ = try await URLSession.shared.data(for: rpcRequest)
     }
 
-    private func storeSession(userId: String, accessToken: String) {
+    private func storeSession(userId: String, accessToken: String, refreshToken: String? = nil) {
         let defaults = UserDefaults.standard
         defaults.set(userId, forKey: sessionUserIdKey)
         defaults.set(accessToken, forKey: sessionAccessTokenKey)
+        if let refreshToken, !refreshToken.isEmpty {
+            defaults.set(refreshToken, forKey: sessionRefreshTokenKey)
+        }
     }
 
     private func clearSession() {
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: sessionUserIdKey)
         defaults.removeObject(forKey: sessionAccessTokenKey)
+        defaults.removeObject(forKey: sessionRefreshTokenKey)
+    }
+
+    func refreshSession() async throws {
+        guard let refreshToken = UserDefaults.standard.string(forKey: sessionRefreshTokenKey),
+              !refreshToken.isEmpty else { return }
+        var components = URLComponents(url: baseURL.appendingPathComponent("auth/v1/token"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "grant_type", value: "refresh_token")]
+        guard let url = components?.url else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["refresh_token": refreshToken])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        if let newAccess = json?["access_token"] as? String, !newAccess.isEmpty {
+            let newRefresh = json?["refresh_token"] as? String
+            let storedId = UserDefaults.standard.string(forKey: sessionUserIdKey) ?? ""
+            storeSession(userId: storedId, accessToken: newAccess, refreshToken: newRefresh)
+        }
+    }
+
+    /// Executes a URLRequest with auth headers injected, auto-refreshing the token on 401.
+    private func performRequest(_ request: URLRequest) async throws -> Data {
+        var req = request
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: req)
+        if let http = response as? HTTPURLResponse, http.statusCode == 401 {
+            try await refreshSession()
+            var retryReq = request
+            retryReq.setValue(anonKey, forHTTPHeaderField: "apikey")
+            retryReq.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
+            let (retryData, _) = try await URLSession.shared.data(for: retryReq)
+            return retryData
+        }
+        return data
     }
 
     private func authorizedBearer() -> String {
@@ -1418,13 +1808,9 @@ final class SupabaseService {
         components?.queryItems = [URLQueryItem(name: "select", value: select)]
         components?.queryItems?.append(contentsOf: filters)
         guard let url = components?.url else { return [] }
-
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
-
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let data = try await performRequest(request)
         return (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
     }
 
@@ -1432,16 +1818,10 @@ final class SupabaseService {
         let url = baseURL.appendingPathComponent("rest/v1/\(table)")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(preferRepresentation ? "return=representation" : "return=minimal", forHTTPHeaderField: "Prefer")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw NSError(domain: "SupabaseService", code: 41, userInfo: [NSLocalizedDescriptionKey: "Insert failed for \(table)"])
-        }
+        let data = try await performRequest(request)
         guard preferRepresentation else { return [] }
         return (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
     }
@@ -1451,16 +1831,10 @@ final class SupabaseService {
         let url = baseURL.appendingPathComponent("rest/v1/\(table)?\(matchColumn)=eq.\(encodedValue)")
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (_, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw NSError(domain: "SupabaseService", code: 95, userInfo: [NSLocalizedDescriptionKey: "Could not update \(table)"])
-        }
+        _ = try await performRequest(request)
     }
 
     private func number(_ any: Any?) -> Double? {
@@ -1490,6 +1864,156 @@ final class SupabaseService {
             return code
         }
         return nil
+    }
+
+    private func fetchAdminOverviewMetricsViaRPC() async throws -> MobileAdminMetrics? {
+        let url = baseURL.appendingPathComponent("rest/v1/rpc/admin_dashboard_metrics")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("{}".utf8)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            return nil
+        }
+
+        let any = try JSONSerialization.jsonObject(with: data)
+        let root: [String: Any]?
+        if let dict = any as? [String: Any] {
+            root = dict
+        } else if let array = any as? [[String: Any]] {
+            root = array.first
+        } else {
+            root = nil
+        }
+        guard let payload = root else { return nil }
+
+        let usersTotal = nestedInt(payload, flatKey: "users_total", objectKey: "users", nestedKey: "total")
+        let hostsTotal = nestedInt(payload, flatKey: "hosts_total", objectKey: "hosts", nestedKey: "total")
+        let storiesTotal = nestedInt(payload, flatKey: "stories_total", objectKey: "stories", nestedKey: "total")
+        let propertiesTotal = nestedInt(payload, flatKey: "properties_total", objectKey: "properties", nestedKey: "total")
+        let bookingsTotal = nestedInt(payload, flatKey: "bookings_total", objectKey: "bookings", nestedKey: "total")
+        let bookingsPaid = nestedInt(payload, flatKey: "bookings_paid", objectKey: "bookings", nestedKey: "paid")
+
+        let revenueGross = nestedDouble(payload, flatKey: "revenue_gross", objectKey: "revenue", nestedKey: "gross")
+        var currency = nestedString(payload, flatKey: "revenue_currency", objectKey: "revenue", nestedKey: "currency")
+        if currency.isEmpty,
+           let byCurrency = payload["revenue_by_currency"] as? [[String: Any]],
+           let first = byCurrency.first,
+           let c = first["currency"] as? String,
+           !c.isEmpty {
+            currency = c
+        }
+        if currency.isEmpty { currency = "RWF" }
+
+        let platformCharges = nestedDouble(payload, flatKey: "platform_charges", objectKey: "revenue", nestedKey: "platform_charges")
+        let discountAmount = nestedDouble(payload, flatKey: "discount_amount", objectKey: "revenue", nestedKey: "discount_amount")
+        let hostNetRaw = nestedDouble(payload, flatKey: "host_net", objectKey: "revenue", nestedKey: "host_net")
+        let hostNet = hostNetRaw > 0 ? hostNetRaw : max(revenueGross - platformCharges, 0)
+
+        return MobileAdminMetrics(
+            usersTotal: usersTotal,
+            hostsTotal: hostsTotal,
+            storiesTotal: storiesTotal,
+            propertiesTotal: propertiesTotal,
+            bookingsTotal: bookingsTotal,
+            bookingsPaid: bookingsPaid,
+            revenueGross: revenueGross,
+            platformCharges: platformCharges,
+            hostNet: hostNet,
+            discountAmount: discountAmount,
+            revenueCurrency: currency
+        )
+    }
+
+    private func fetchFinancialSummaryViaRPC() async throws -> MobileFinancialSummary? {
+        let url = baseURL.appendingPathComponent("rest/v1/rpc/get_staff_dashboard_metrics")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("{}".utf8)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            return nil
+        }
+
+        let any = try JSONSerialization.jsonObject(with: data)
+        let payload: [String: Any]
+        if let dict = any as? [String: Any] {
+            payload = dict
+        } else if let array = any as? [[String: Any]], let first = array.first {
+            payload = first
+        } else {
+            return nil
+        }
+
+        let revenueRows = (payload["revenue_by_currency"] as? [[String: Any]] ?? []).compactMap { row -> (currency: String, amount: Double)? in
+            guard let currency = row["currency"] as? String, !currency.isEmpty else { return nil }
+            let amount = number(row["amount"]) ?? 0
+            return (currency, amount)
+        }
+
+        return MobileFinancialSummary(
+            bookingsTotal: Int(number(payload["bookings_total"]) ?? 0),
+            pending: Int(number(payload["bookings_pending"]) ?? 0),
+            confirmed: Int(number(payload["bookings_confirmed"]) ?? 0),
+            paid: Int(number(payload["bookings_paid"]) ?? 0),
+            cancelled: Int(number(payload["bookings_cancelled"]) ?? 0),
+            unpaidCheckoutRequests: Int(number(payload["checkout_unpaid"]) ?? 0),
+            refundedCheckoutRequests: Int(number(payload["refunds_total"]) ?? 0),
+            revenueGross: number(payload["revenue_gross"]) ?? 0,
+            revenueByCurrency: revenueRows
+        )
+    }
+
+    private func fetchAdminUsersViaRPC(search: String = "") async throws -> [[String: Any]]? {
+        let url = baseURL.appendingPathComponent("rest/v1/rpc/admin_list_users")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["_search": search])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            return nil
+        }
+        return (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
+    }
+
+    private func nestedObject(_ payload: [String: Any], key: String) -> [String: Any] {
+        payload[key] as? [String: Any] ?? [:]
+    }
+
+    private func nestedInt(_ payload: [String: Any], flatKey: String, objectKey: String, nestedKey: String) -> Int {
+        if let value = number(payload[flatKey]) {
+            return Int(value)
+        }
+        let object = nestedObject(payload, key: objectKey)
+        return Int(number(object[nestedKey]) ?? 0)
+    }
+
+    private func nestedDouble(_ payload: [String: Any], flatKey: String, objectKey: String, nestedKey: String) -> Double {
+        if let value = number(payload[flatKey]) {
+            return value
+        }
+        let object = nestedObject(payload, key: objectKey)
+        return number(object[nestedKey]) ?? 0
+    }
+
+    private func nestedString(_ payload: [String: Any], flatKey: String, objectKey: String, nestedKey: String) -> String {
+        if let value = payload[flatKey] as? String {
+            return value
+        }
+        let object = nestedObject(payload, key: objectKey)
+        return object[nestedKey] as? String ?? ""
     }
 
     private func isVideoURL(_ url: String) -> Bool {
@@ -1715,16 +2239,17 @@ final class SupabaseService {
 
     func updateProfile(userId: String, fullName: String?, nickname: String?, phone: String?, dateOfBirth: String?, bio: String?) async throws {
         var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/profiles"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "user_id", value: "eq.\(userId)")]
+        components?.queryItems = [URLQueryItem(name: "on_conflict", value: "user_id")]
         guard let url = components?.url else { return }
         var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
+        request.httpMethod = "POST"
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
         request.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+        request.setValue("resolution=merge-duplicates,return=minimal", forHTTPHeaderField: "Prefer")
 
         var payload: [String: Any] = [:]
+        payload["user_id"] = userId
         payload["full_name"] = fullName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? NSNull()
         payload["nickname"] = nickname?.trimmingCharacters(in: .whitespacesAndNewlines) ?? NSNull()
         payload["phone"] = phone?.trimmingCharacters(in: .whitespacesAndNewlines) ?? NSNull()
@@ -1733,11 +2258,68 @@ final class SupabaseService {
             payload["date_of_birth"] = dob
         }
 
+        if let identity = try? await fetchAuthenticatedUserIdentity(), let email = identity.email, !email.isEmpty {
+            payload["email"] = email
+        }
+
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw NSError(domain: "SupabaseService", code: 50, userInfo: [NSLocalizedDescriptionKey: "Could not update profile"])
         }
+    }
+
+    private func notifySupportTicketEmails(ticketId: String, category: String, subject: String, message: String, userId: String, userEmail: String?, userName: String?) async {
+        guard let supportURL = URL(string: "\(apiBaseURL)/api/support-email") else {
+            return
+        }
+
+        let supportPayload: [String: Any] = [
+            "category": category,
+            "subject": subject,
+            "message": message,
+            "userId": userId,
+            "userEmail": userEmail ?? NSNull(),
+            "userName": userName ?? "Customer",
+        ]
+
+        let confirmationPayload: [String: Any] = [
+            "action": "ticket_confirmation",
+            "ticketId": ticketId,
+            "category": category,
+            "subject": subject,
+            "message": message,
+            "userName": userName ?? "Customer",
+            "userEmail": userEmail ?? NSNull(),
+        ]
+
+        await postJSONNoThrow(url: supportURL, payload: supportPayload)
+        await postJSONNoThrow(url: supportURL, payload: confirmationPayload)
+    }
+
+    private func postJSONNoThrow(url: URL, payload: [String: Any]) async {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
+    private func markSupportTicketActive(ticketId: String) async {
+        guard let encodedTicketId = ticketId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "\(baseURL.absoluteString)/rest/v1/support_tickets?id=eq.\(encodedTicketId)") else {
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["status": "open"])
+
+        _ = try? await URLSession.shared.data(for: request)
     }
 
     func countFavorites(userId: String) async throws -> Int {
@@ -1784,6 +2366,50 @@ final class SupabaseService {
         return 0
     }
 
+    func countTripCartItems(userId: String) async throws -> Int {
+        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/trip_cart_items"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "select", value: "id"),
+            URLQueryItem(name: "user_id", value: "eq.\(userId)")
+        ]
+        guard let url = components?.url else { return 0 }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
+        request.setValue("count=exact", forHTTPHeaderField: "Prefer")
+        let (_, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse,
+           let countStr = http.allHeaderFields["Content-Range"] as? String,
+           let total = countStr.split(separator: "/").last.flatMap({ Int($0) }) {
+            return total
+        }
+        return 0
+    }
+
+    func countPastBookings(userId: String) async throws -> Int {
+        let today = String(ISO8601DateFormatter().string(from: Date()).prefix(10))
+        var components = URLComponents(url: baseURL.appendingPathComponent("rest/v1/bookings"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "select", value: "id"),
+            URLQueryItem(name: "guest_id", value: "eq.\(userId)"),
+            URLQueryItem(name: "check_in", value: "lt.\(today)")
+        ]
+        guard let url = components?.url else { return 0 }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
+        request.setValue("count=exact", forHTTPHeaderField: "Prefer")
+        let (_, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse,
+           let countStr = http.allHeaderFields["Content-Range"] as? String,
+           let total = countStr.split(separator: "/").last.flatMap({ Int($0) }) {
+            return total
+        }
+        return 0
+    }
+
     func requestPasswordReset(email: String) async throws {
         let url = baseURL.appendingPathComponent("auth/v1/recover")
         var request = URLRequest(url: url)
@@ -1812,6 +2438,364 @@ final class SupabaseService {
 
         let (data, _) = try await URLSession.shared.data(for: request)
         return try JSONDecoder().decode([Story].self, from: data)
+    }
+
+    // MARK: - Accommodations with Filters
+
+    func fetchAccommodations(
+        search: String? = nil,
+        propertyType: String? = nil,
+        minPrice: Double? = nil,
+        maxPrice: Double? = nil,
+        minRating: Double? = nil,
+        monthlyOnly: Bool = false,
+        limit: Int = 40,
+        offset: Int = 0
+    ) async throws -> [Listing] {
+        var filters: [URLQueryItem] = [
+            URLQueryItem(name: "order", value: "created_at.desc"),
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset))
+        ]
+        if let search = search, !search.isEmpty {
+            filters.append(URLQueryItem(name: "or", value: "(title.ilike.*\(search)*,location.ilike.*\(search)*,name.ilike.*\(search)*)"))
+        }
+        if let propertyType = propertyType, !propertyType.isEmpty {
+            filters.append(URLQueryItem(name: "property_type", value: "eq.\(propertyType)"))
+        }
+        if let minPrice = minPrice {
+            filters.append(URLQueryItem(name: "price_per_night", value: "gte.\(Int(minPrice))"))
+        }
+        if let maxPrice = maxPrice {
+            filters.append(URLQueryItem(name: "price_per_night", value: "lte.\(Int(maxPrice))"))
+        }
+        if let minRating = minRating {
+            filters.append(URLQueryItem(name: "rating", value: "gte.\(minRating)"))
+        }
+        if monthlyOnly {
+            filters.append(URLQueryItem(name: "monthly_only_listing", value: "eq.true"))
+        }
+        let rows = try await fetchRows(
+            table: "properties",
+            select: "id,host_id,title,name,location,price_per_night,price_per_month,currency,is_published,monthly_only_listing,images,main_image,rating,property_type,amenities",
+            filters: filters
+        )
+        return rows.compactMap { row in
+            let id = row["id"] as? String ?? UUID().uuidString
+            let title = (row["title"] as? String) ?? (row["name"] as? String) ?? "Property"
+            let location = (row["location"] as? String) ?? "Rwanda"
+            let price = number(row["price_per_night"]) ?? 0
+            let priceMonth = number(row["price_per_month"])
+            let currency = (row["currency"] as? String) ?? "USD"
+            let images = row["images"] as? [String]
+            let mainImage = (row["main_image"] as? String) ?? images?.first
+            let rating = number(row["rating"])
+            return Listing(id: id, hostId: row["host_id"] as? String, title: title, location: location, pricePerNight: price, pricePerMonth: priceMonth, currency: currency, isPublished: true, monthlyOnlyListing: row["monthly_only_listing"] as? Bool, images: images, mainImage: mainImage, rating: rating)
+        }
+    }
+
+    // MARK: - Tours with Filters
+
+    func fetchToursFiltered(
+        search: String? = nil,
+        category: String? = nil,
+        duration: String? = nil,
+        limit: Int = 40
+    ) async throws -> [Listing] {
+        var filters: [URLQueryItem] = [
+            URLQueryItem(name: "or", value: "(is_published.eq.true,is_published.is.null)"),
+            URLQueryItem(name: "order", value: "created_at.desc"),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        if let search = search, !search.isEmpty {
+            filters.append(URLQueryItem(name: "or", value: "(title.ilike.*\(search)*,location.ilike.*\(search)*)"))
+        }
+        if let category = category, !category.isEmpty {
+            filters.append(URLQueryItem(name: "category", value: "eq.\(category)"))
+        }
+        if let duration = duration, !duration.isEmpty {
+            filters.append(URLQueryItem(name: "duration_type", value: "eq.\(duration)"))
+        }
+        let rows = try await fetchRows(
+            table: "tours",
+            select: "id,title,location,price_per_person,price_for_citizens,currency,is_published,images,rating,category,duration_type,duration,max_group_size,difficulty",
+            filters: filters
+        )
+        return rows.compactMap { row in
+            let id = row["id"] as? String ?? UUID().uuidString
+            let title = (row["title"] as? String) ?? "Tour"
+            let location = (row["location"] as? String) ?? "Rwanda"
+            let price = number(row["price_per_person"]) ?? number(row["price_for_citizens"]) ?? 0
+            let currency = (row["currency"] as? String) ?? "USD"
+            let images = row["images"] as? [String]
+            let rating = number(row["rating"])
+            return Listing(id: id, hostId: nil, title: title, location: location, pricePerNight: price, pricePerMonth: nil, currency: currency, isPublished: true, monthlyOnlyListing: nil, images: images, mainImage: images?.first, rating: rating)
+        }
+    }
+
+    func fetchTourDetail(tourId: String) async throws -> [String: Any]? {
+        let rows = try await fetchRows(
+            table: "tours",
+            select: "id,title,location,description,price_per_person,price_for_citizens,currency,is_published,images,rating,category,duration_type,duration,max_group_size,difficulty,host_id,highlights,inclusions,exclusions,meeting_point",
+            filters: [URLQueryItem(name: "id", value: "eq.\(tourId)")]
+        )
+        return rows.first
+    }
+
+    // MARK: - Transport with Filters
+
+    func fetchTransportVehicles(
+        serviceType: String? = nil,
+        search: String? = nil,
+        vehicleType: String? = nil,
+        limit: Int = 40
+    ) async throws -> [Listing] {
+        var filters: [URLQueryItem] = [
+            URLQueryItem(name: "or", value: "(is_published.eq.true,is_published.is.null)"),
+            URLQueryItem(name: "order", value: "created_at.desc"),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        if let serviceType = serviceType, !serviceType.isEmpty {
+            filters.append(URLQueryItem(name: "service_type", value: "eq.\(serviceType)"))
+        }
+        if let search = search, !search.isEmpty {
+            filters.append(URLQueryItem(name: "or", value: "(title.ilike.*\(search)*,provider_name.ilike.*\(search)*)"))
+        }
+        if let vehicleType = vehicleType, !vehicleType.isEmpty {
+            filters.append(URLQueryItem(name: "vehicle_type", value: "eq.\(vehicleType)"))
+        }
+        let rows = try await fetchRows(
+            table: "transport_vehicles",
+            select: "id,title,provider_name,vehicle_type,service_type,price_per_day,daily_price,currency,image_url,media,exterior_images,interior_images,is_published,seats,transmission,fuel_type,brand,model,year",
+            filters: filters
+        )
+        return rows.compactMap { row in
+            let id = row["id"] as? String ?? UUID().uuidString
+            let title = (row["title"] as? String) ?? "Vehicle"
+            let provider = (row["provider_name"] as? String) ?? (row["vehicle_type"] as? String) ?? "Transport"
+            let price = number(row["price_per_day"]) ?? number(row["daily_price"]) ?? 0
+            let currency = (row["currency"] as? String) ?? "USD"
+            var images: [String] = []
+            if let image = row["image_url"] as? String, !image.isEmpty { images.append(image) }
+            if let ext = row["exterior_images"] as? [String] { images.append(contentsOf: ext) }
+            if let int = row["interior_images"] as? [String] { images.append(contentsOf: int) }
+            if let med = row["media"] as? [String] { images.append(contentsOf: med) }
+            images = images.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            return Listing(id: id, hostId: nil, title: title, location: provider, pricePerNight: price, pricePerMonth: nil, currency: currency, isPublished: true, monthlyOnlyListing: nil, images: images, mainImage: images.first, rating: nil)
+        }
+    }
+
+    func fetchAirportTransferRoutes(limit: Int = 40) async throws -> [[String: Any]] {
+        return try await fetchRows(
+            table: "airport_transfer_routes",
+            select: "id,from_location,to_location,base_price,currency,is_active,distance_km",
+            filters: [
+                URLQueryItem(name: "is_active", value: "eq.true"),
+                URLQueryItem(name: "order", value: "from_location.asc"),
+                URLQueryItem(name: "limit", value: String(limit))
+            ]
+        )
+    }
+
+    func fetchCarRentals(limit: Int = 40) async throws -> [[String: Any]] {
+        return try await fetchRows(
+            table: "transport_vehicles",
+            select: "id,title,brand,model,year,vehicle_type,seats,transmission,fuel_type,drivetrain,price_per_day,daily_price,weekly_price,monthly_price,currency,image_url,exterior_images,interior_images,key_features,is_verified,is_published",
+            filters: [
+                URLQueryItem(name: "service_type", value: "eq.car_rental"),
+                URLQueryItem(name: "or", value: "(is_published.eq.true,is_published.is.null)"),
+                URLQueryItem(name: "order", value: "created_at.desc"),
+                URLQueryItem(name: "limit", value: String(limit))
+            ]
+        )
+    }
+
+    // MARK: - Unified Search
+
+    func searchAll(query: String, limit: Int = 20) async throws -> (properties: [Listing], tours: [Listing], transport: [Listing]) {
+        async let props = fetchAccommodations(search: query, limit: limit)
+        async let tours = fetchToursFiltered(search: query, limit: limit)
+        async let transport = fetchTransportVehicles(search: query, limit: limit)
+        return try await (properties: props, tours: tours, transport: transport)
+    }
+
+    // MARK: - Wishlist Toggle
+
+    func addToWishlist(userId: String, propertyId: String) async throws {
+        _ = try await insertRows(table: "favorites", body: [
+            "user_id": userId,
+            "property_id": propertyId
+        ], preferRepresentation: false)
+    }
+
+    func removeFromWishlist(userId: String, propertyId: String) async throws {
+        let encodedUserId = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId
+        let encodedPropertyId = propertyId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? propertyId
+        let url = baseURL.appendingPathComponent("rest/v1/favorites?user_id=eq.\(encodedUserId)&property_id=eq.\(encodedPropertyId)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue(authorizedBearer(), forHTTPHeaderField: "Authorization")
+        _ = try await URLSession.shared.data(for: request)
+    }
+
+    func isInWishlist(userId: String, propertyId: String) async throws -> Bool {
+        let rows = try await fetchRows(
+            table: "favorites",
+            select: "id",
+            filters: [
+                URLQueryItem(name: "user_id", value: "eq.\(userId)"),
+                URLQueryItem(name: "property_id", value: "eq.\(propertyId)"),
+                URLQueryItem(name: "limit", value: "1")
+            ]
+        )
+        return !rows.isEmpty
+    }
+
+    // MARK: - Booking Actions
+
+    func cancelBooking(bookingId: String) async throws {
+        try await updateRows(table: "bookings", matchColumn: "id", matchValue: bookingId, body: [
+            "status": "cancelled",
+            "cancelled_at": ISO8601DateFormatter().string(from: Date())
+        ])
+    }
+
+    func requestDateChange(bookingId: String, newCheckIn: String, newCheckOut: String, reason: String?) async throws {
+        _ = try await insertRows(table: "booking_date_change_requests", body: [
+            "booking_id": bookingId,
+            "new_check_in": newCheckIn,
+            "new_check_out": newCheckOut,
+            "reason": reason ?? "",
+            "status": "pending"
+        ], preferRepresentation: false)
+    }
+
+    func requestRefund(bookingId: String, reason: String) async throws {
+        _ = try await insertRows(table: "support_tickets", body: [
+            "booking_id": bookingId,
+            "subject": "Refund Request",
+            "message": reason,
+            "category": "refund",
+            "status": "open"
+        ], preferRepresentation: false)
+    }
+
+    // MARK: - Guest Review
+
+    func submitGuestReview(bookingId: String, propertyId: String, userId: String, rating: Int, comment: String, serviceRating: Int? = nil) async throws {
+        var body: [String: Any] = [
+            "booking_id": bookingId,
+            "property_id": propertyId,
+            "user_id": userId,
+            "rating": rating,
+            "comment": comment,
+            "status": "pending"
+        ]
+        if let sr = serviceRating { body["service_rating"] = sr }
+        _ = try await insertRows(table: "property_reviews", body: body, preferRepresentation: false)
+    }
+
+    func fetchPropertyReviews(propertyId: String, limit: Int = 20) async throws -> [[String: Any]] {
+        return try await fetchRows(
+            table: "property_reviews",
+            select: "id,rating,review_text,comment,status,created_at,user_id,reviewer_name",
+            filters: [
+                URLQueryItem(name: "property_id", value: "eq.\(propertyId)"),
+                URLQueryItem(name: "status",      value: "eq.approved"),
+                URLQueryItem(name: "order",       value: "created_at.desc"),
+                URLQueryItem(name: "limit",       value: String(limit))
+            ]
+        )
+    }
+
+    func addToTripCart(userId: String, propertyId: String, propertyTitle: String, currency: String, pricePerNight: Double) async throws {
+        _ = try await insertRows(table: "trip_cart_items", body: [
+            "user_id":       userId,
+            "property_id":   propertyId,
+            "property_title": propertyTitle,
+            "currency":      currency,
+            "price":         pricePerNight,
+            "status":        "pending"
+        ], preferRepresentation: false)
+    }
+
+    func submitTokenReview(token: String, accommodationRating: Int, serviceRating: Int, comment: String) async throws {
+        let apiURL = URL(string: "\(MobileConfig.apiBaseUrl)/api/review")!
+        var request = URLRequest(url: apiURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "token": token,
+            "accommodation_rating": accommodationRating,
+            "service_rating": serviceRating,
+            "comment": comment
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw NSError(domain: "SupabaseService", code: 98, userInfo: [NSLocalizedDescriptionKey: "Review submission failed"])
+        }
+    }
+
+    // MARK: - Complete Profile
+
+    func completeProfile(userId: String, fullName: String, phone: String, isOver18: Bool) async throws {
+        try await updateRows(table: "profiles", matchColumn: "user_id", matchValue: userId, body: [
+            "full_name": fullName,
+            "phone": phone,
+            "is_over_18": isOver18,
+            "profile_completed": true
+        ])
+    }
+
+    func isProfileCompleted(userId: String) async throws -> Bool {
+        let rows = try await fetchRows(
+            table: "profiles",
+            select: "profile_completed,full_name,phone",
+            filters: [URLQueryItem(name: "user_id", value: "eq.\(userId)"), URLQueryItem(name: "limit", value: "1")]
+        )
+        guard let profile = rows.first else { return false }
+        let completed = profile["profile_completed"] as? Bool ?? false
+        let hasName = !(profile["full_name"] as? String ?? "").isEmpty
+        let hasPhone = !(profile["phone"] as? String ?? "").isEmpty
+        return completed || (hasName && hasPhone)
+    }
+
+    // MARK: - Fetch Favorites as Listings
+
+    func fetchFavoriteListings(userId: String) async throws -> [Listing] {
+        let favRows = try await fetchRows(
+            table: "favorites",
+            select: "property_id,properties(id,host_id,title,name,location,price_per_night,price_per_month,currency,is_published,images,main_image,rating)",
+            filters: [URLQueryItem(name: "user_id", value: "eq.\(userId)")]
+        )
+        return favRows.compactMap { fav in
+            guard let prop = fav["properties"] as? [String: Any] else { return nil }
+            let id = prop["id"] as? String ?? UUID().uuidString
+            let title = (prop["title"] as? String) ?? (prop["name"] as? String) ?? "Property"
+            let location = (prop["location"] as? String) ?? ""
+            let price = number(prop["price_per_night"]) ?? 0
+            let priceMonth = number(prop["price_per_month"])
+            let currency = (prop["currency"] as? String) ?? "USD"
+            let images = prop["images"] as? [String]
+            let mainImage = (prop["main_image"] as? String) ?? images?.first
+            let rating = number(prop["rating"])
+            return Listing(id: id, hostId: prop["host_id"] as? String, title: title, location: location, pricePerNight: price, pricePerMonth: priceMonth, currency: currency, isPublished: true, monthlyOnlyListing: nil, images: images, mainImage: mainImage, rating: rating)
+        }
+    }
+
+    // MARK: - Booking Detail for MyBookings
+
+    func fetchUserBookingsDetailed(userId: String) async throws -> [[String: Any]] {
+        return try await fetchRows(
+            table: "bookings",
+            select: "id,guest_id,host_id,property_id,booking_type,guest_name,guest_email,check_in,check_out,guests,total_price,currency,status,payment_status,payment_method,special_requests,created_at,cancelled_at,cancellation_policy,properties(title,name,location,images,main_image)",
+            filters: [
+                URLQueryItem(name: "guest_id", value: "eq.\(userId)"),
+                URLQueryItem(name: "order", value: "created_at.desc")
+            ]
+        )
     }
 
 }
