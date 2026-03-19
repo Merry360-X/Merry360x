@@ -20,10 +20,7 @@ import { logError, uiErrorMessage } from "@/lib/ui-errors";
 import { formatMoney } from "@/lib/money";
 import { AMENITIES, AMENITIES_BY_CATEGORY } from "@/lib/amenities";
 import {
-  calculateBookingFinancialsFromDiscountedListing,
-  calculateHostEarningsFromGuestTotal,
-  getGuestFeePercent,
-  getProviderFeePercent,
+  PLATFORM_FEES,
 } from "@/lib/fees";
 import { getTourPricingModel, getTourPricingModels } from "@/lib/tour-pricing";
 import { useFxRates } from "@/hooks/useFxRates";
@@ -2834,6 +2831,39 @@ export default function HostDashboard() {
     return ratio >= 0.4 && ratio <= 3.5;
   }, []);
 
+  const getCanonicalGuestFeePercent = useCallback((serviceType: 'accommodation' | 'tour' | 'transport') => {
+    if (serviceType === 'accommodation') {
+      return PLATFORM_FEES.accommodation.guestFeePercent;
+    }
+    return PLATFORM_FEES[serviceType].guestFeePercent;
+  }, []);
+
+  const getCanonicalHostFeePercent = useCallback((serviceType: 'accommodation' | 'tour' | 'transport') => {
+    if (serviceType === 'accommodation') {
+      return PLATFORM_FEES.accommodation.hostFeePercent;
+    }
+    return PLATFORM_FEES[serviceType].providerFeePercent;
+  }, []);
+
+  const calculateGuestTotalFromDiscountedListingSubtotal = useCallback((
+    discountedListingSubtotal: number,
+    serviceType: 'accommodation' | 'tour' | 'transport'
+  ) => {
+    const subtotal = Math.max(0, Number(discountedListingSubtotal || 0));
+    const guestFeePercent = getCanonicalGuestFeePercent(serviceType);
+    const guestFee = (subtotal * guestFeePercent) / 100;
+    return subtotal + guestFee;
+  }, [getCanonicalGuestFeePercent]);
+
+  const extractBasePriceFromGuestPaidTotal = useCallback((
+    guestPaidTotal: number,
+    serviceType: 'accommodation' | 'tour' | 'transport'
+  ) => {
+    const paid = Math.max(0, Number(guestPaidTotal || 0));
+    const guestFeePercent = getCanonicalGuestFeePercent(serviceType);
+    return paid / (1 + guestFeePercent / 100);
+  }, [getCanonicalGuestFeePercent]);
+
   const getBookingGuestPaidAmount = useCallback((booking: {
     id?: string | null;
     order_id?: string | null;
@@ -2854,11 +2884,12 @@ export default function HostDashboard() {
     if (!booking.order_id) {
       const listedAmount = Number(booking.total_price || 0);
       if (!Number.isFinite(listedAmount) || listedAmount <= 0) return 0;
-      return calculateBookingFinancialsFromDiscountedListing(listedAmount, serviceType).guestTotal;
+      return calculateGuestTotalFromDiscountedListingSubtotal(listedAmount, serviceType);
     }
 
     const checkout = checkoutByOrderId[booking.order_id];
     const checkoutTotal = Number(checkout?.total_amount || 0);
+    const checkoutPaymentType = String(checkout?.metadata?.payment_type || '').toLowerCase();
 
     const checkoutItems = checkout?.metadata?.items;
     if (Array.isArray(checkoutItems) && checkoutItems.length > 0) {
@@ -2887,7 +2918,7 @@ export default function HostDashboard() {
           const itemDiscount = Number(matchedItem.discount_applied || 0);
           const discountedListingSubtotal = (itemPrice * quantity) - itemDiscount;
           if (Number.isFinite(discountedListingSubtotal) && discountedListingSubtotal >= 0) {
-            return calculateBookingFinancialsFromDiscountedListing(discountedListingSubtotal, serviceType).guestTotal;
+            return calculateGuestTotalFromDiscountedListingSubtotal(discountedListingSubtotal, serviceType);
           }
         }
       }
@@ -2896,7 +2927,11 @@ export default function HostDashboard() {
     if (!Number.isFinite(checkoutTotal) || checkoutTotal <= 0) {
       const listedAmount = Number(booking.total_price || 0);
       if (!Number.isFinite(listedAmount) || listedAmount <= 0) return 0;
-      return calculateBookingFinancialsFromDiscountedListing(listedAmount, serviceType).guestTotal;
+      return calculateGuestTotalFromDiscountedListingSubtotal(listedAmount, serviceType);
+    }
+
+    if (checkoutPaymentType === 'individual') {
+      return checkoutTotal;
     }
 
     const orderBookings = (bookings || []).filter((row) => row.order_id === booking.order_id);
@@ -2934,7 +2969,7 @@ export default function HostDashboard() {
 
     const remaining = Math.max(0, checkoutTotal - positiveTotal);
     return remaining / missingCount;
-  }, [bookings, checkoutByOrderId, isCheckoutAmountReasonable]);
+  }, [bookings, checkoutByOrderId, isCheckoutAmountReasonable, calculateGuestTotalFromDiscountedListingSubtotal]);
 
   const getCheckoutItemForBooking = useCallback((booking: {
     order_id?: string | null;
@@ -2974,6 +3009,7 @@ export default function HostDashboard() {
     const checkout = booking.order_id ? checkoutByOrderId[booking.order_id] : null;
     const checkoutTotal = Number(checkout?.total_amount || 0);
     const hasCheckoutTotal = Number.isFinite(checkoutTotal) && checkoutTotal > 0;
+    const checkoutPaymentType = String(checkout?.metadata?.payment_type || '').toLowerCase();
     const listedAmount = Number(booking.total_price || 0);
     const hasListedAmount = Number.isFinite(listedAmount) && listedAmount > 0;
 
@@ -2989,6 +3025,23 @@ export default function HostDashboard() {
 
     const checkoutCurrency = String(checkout?.currency || '').toUpperCase();
     let resolvedCurrency = checkoutCurrency || listingCurrency || 'RWF';
+
+    if (hasCheckoutTotal && checkoutPaymentType === 'individual') {
+      if (checkoutCurrency && listingCurrency && checkoutCurrency !== listingCurrency) {
+        const convertedIndividualShare = convertAmount(checkoutTotal, checkoutCurrency, listingCurrency, usdRates);
+        if (Number.isFinite(Number(convertedIndividualShare))) {
+          return {
+            amount: Number(convertedIndividualShare),
+            currency: listingCurrency,
+          };
+        }
+      }
+
+      return {
+        amount: checkoutTotal,
+        currency: resolvedCurrency,
+      };
+    }
 
     if (hasCheckoutTotal && hasListedAmount && !isCheckoutAmountReasonable(checkoutTotal, listedAmount)) {
       resolvedCurrency = listingCurrency;
@@ -3081,10 +3134,19 @@ export default function HostDashboard() {
 
     const checkoutTotal = Number(checkout?.total_amount || 0);
     if (Number.isFinite(checkoutTotal) && checkoutTotal > 0) {
+      const checkoutBasePrice = Number(checkout?.base_price_amount);
+      if (Number.isFinite(checkoutBasePrice) && checkoutBasePrice >= 0) {
+        return {
+          listingSubtotal: checkoutBasePrice,
+          currency: String(checkout?.currency || booking.currency || 'RWF').toUpperCase(),
+          serviceType,
+        };
+      }
+
       // Keep host dashboard aligned with booking-calculation math by deriving
       // listing subtotal from the actual paid checkout amount when no item
       // breakdown is available.
-      const { basePrice } = calculateHostEarningsFromGuestTotal(checkoutTotal, serviceType);
+      const basePrice = extractBasePriceFromGuestPaidTotal(checkoutTotal, serviceType);
       return {
         listingSubtotal: Number.isFinite(basePrice) ? Math.max(0, basePrice) : 0,
         currency: String(checkout?.currency || booking.currency || 'RWF').toUpperCase(),
@@ -3102,14 +3164,14 @@ export default function HostDashboard() {
     }
 
     const guestPaid = getBookingGuestPaidAmount(booking);
-    const { basePrice } = calculateHostEarningsFromGuestTotal(guestPaid, serviceType);
+    const basePrice = extractBasePriceFromGuestPaidTotal(guestPaid, serviceType);
 
     return {
       listingSubtotal: Number.isFinite(basePrice) ? Math.max(0, basePrice) : 0,
       currency: String(checkout?.currency || booking.currency || 'RWF').toUpperCase(),
       serviceType,
     };
-  }, [checkoutByOrderId, getBookingGuestPaidAmount, getCheckoutItemForBooking]);
+  }, [checkoutByOrderId, extractBasePriceFromGuestPaidTotal, getBookingGuestPaidAmount, getCheckoutItemForBooking]);
 
   const getResolvedBookingAmountForHost = useCallback((booking: Booking) => {
     const bookingAmount = getBookingAmountAndCurrency(booking);
@@ -3152,8 +3214,8 @@ export default function HostDashboard() {
     
     // IMPORTANT: PawaPay fees are absorbed by platform, NOT deducted from host
     // Host only pays their platform fee (3% for accommodation, 10% for tours) from base amount
-    const guestFeePercent = getGuestFeePercent(serviceType);
-    const hostFeePercent = getProviderFeePercent(serviceType);
+    const guestFeePercent = getCanonicalGuestFeePercent(serviceType);
+    const hostFeePercent = getCanonicalHostFeePercent(serviceType);
     
     // Step 1: Get base amount (remove guest fee from what guest paid)
     const baseAmount = paidAmount / (1 + guestFeePercent / 100);
@@ -3168,7 +3230,7 @@ export default function HostDashboard() {
       amount: Number.isFinite(hostNetEarnings) ? hostNetEarnings : 0,
       currency: resolvedBookingAmount.currency,
     };
-  }, [getBookingServiceType, getResolvedBookingAmountForHost]);
+  }, [getBookingServiceType, getCanonicalGuestFeePercent, getCanonicalHostFeePercent, getResolvedBookingAmountForHost]);
 
   const confirmedBookings = (bookings || []).filter((b) => {
     const status = String(b.status || "").toLowerCase();
@@ -3196,7 +3258,13 @@ export default function HostDashboard() {
     return sum + toRwfAmount(hostNetAmount, bookingCurrency);
   }, 0);
 
-  const totalNetEarnings = dbNetEarningsRwf ?? computedTotalNetEarnings;
+  const dbSnapshotLooksStale =
+    dbNetEarningsRwf != null &&
+    computedTotalNetEarnings > dbNetEarningsRwf + 1;
+
+  const totalNetEarnings = dbSnapshotLooksStale
+    ? computedTotalNetEarnings
+    : (dbNetEarningsRwf ?? computedTotalNetEarnings);
   
   // Keep totalEarnings as booking-derived net earnings for display
   const totalEarnings = totalNetEarnings;
@@ -3216,7 +3284,13 @@ export default function HostDashboard() {
   const pendingPayoutAmount = payoutTotals.pendingRwf;
   const completedPayoutAmount = payoutTotals.completedRwf;
   const totalEligibleEarnings = totalNetEarnings + earningsAdjustmentsRwf;
-  const availableForPayout = dbAvailableForPayoutRwf ?? Math.max(0, totalEligibleEarnings - completedPayoutAmount - pendingPayoutAmount);
+  const computedAvailableForPayout = Math.max(0, totalEligibleEarnings - completedPayoutAmount - pendingPayoutAmount);
+  const availableForPayout =
+    dbAvailableForPayoutRwf == null
+      ? computedAvailableForPayout
+      : dbSnapshotLooksStale && computedAvailableForPayout > dbAvailableForPayoutRwf + 1
+        ? computedAvailableForPayout
+        : dbAvailableForPayoutRwf;
 
   // Handle payout button click - always open combined dialog
   const handlePayoutClick = () => {
@@ -9103,6 +9177,15 @@ export default function HostDashboard() {
 
                     const filteredBookings = filteredReportBookings;
                     const bookingAmountRows = filteredBookings.map((b) => {
+                      const checkout = b.order_id ? checkoutByOrderId[b.order_id] : null;
+                      const checkoutAmount = Number(checkout?.total_amount || 0);
+                      const hasCheckoutAmount = Number.isFinite(checkoutAmount) && checkoutAmount > 0;
+                      const checkoutCurrency = String(checkout?.currency || '').toUpperCase();
+
+                      const originalAmount = Number(b.total_price || 0);
+                      const hasOriginalAmount = Number.isFinite(originalAmount) && originalAmount > 0;
+                      const originalCurrency = String(b.currency || '').toUpperCase();
+
                       const { amount, currency } = getResolvedBookingAmountForHost(b);
                       const amountRwf = toRwfAmount(amount, currency);
                       return {
@@ -9110,20 +9193,28 @@ export default function HostDashboard() {
                         amount,
                         currency,
                         amountRwf,
+                        originalAmount: hasOriginalAmount ? originalAmount : null,
+                        originalCurrency: originalCurrency || null,
+                        checkoutAmount: hasCheckoutAmount ? checkoutAmount : null,
+                        checkoutCurrency: checkoutCurrency || null,
                         hostNetRwf: toRwfAmount(getHostNetEarningsForBooking(b).amount, getHostNetEarningsForBooking(b).currency),
                       };
                     });
                     
                     // CSV Export
-                    const csvData = bookingAmountRows.map(({ booking, amount, currency, amountRwf, hostNetRwf }) => ({
+                    const csvData = bookingAmountRows.map(({ booking, amount, currency, amountRwf, originalAmount, originalCurrency, checkoutAmount, checkoutCurrency, hostNetRwf }) => ({
                       'Booking ID': booking.id.slice(0, 8),
                       'Property': properties.find(p => p.id === booking.property_id)?.title || 'N/A',
                       'Guest': booking.guest_name || 'Guest',
                       'Check In': booking.check_in,
                       'Check Out': booking.check_out,
                       'Guests': booking.guests,
-                      'Amount Paid': amount,
-                      'Currency': currency,
+                      'Amount Paid (Resolved)': amount,
+                      'Resolved Currency': currency,
+                      'Original Booking Amount': originalAmount ?? '',
+                      'Original Booking Currency': originalCurrency ?? '',
+                      'Checkout Amount': checkoutAmount ?? '',
+                      'Checkout Currency': checkoutCurrency ?? '',
                       'Amount Paid (RWF)': Math.round(amountRwf),
                       'Host Earnings (RWF)': Math.round(hostNetRwf),
                       'Status': booking.status,
@@ -9139,8 +9230,12 @@ export default function HostDashboard() {
                       'Check In',
                       'Check Out',
                       'Guests',
-                      'Amount Paid',
-                      'Currency',
+                      'Amount Paid (Resolved)',
+                      'Resolved Currency',
+                      'Original Booking Amount',
+                      'Original Booking Currency',
+                      'Checkout Amount',
+                      'Checkout Currency',
                       'Amount Paid (RWF)',
                       'Host Earnings (RWF)',
                       'Status',
@@ -9173,11 +9268,30 @@ export default function HostDashboard() {
                     const filteredBookings = filteredReportBookings;
 
                     const bookingAmountRows = filteredBookings.map((b) => {
+                      const checkout = b.order_id ? checkoutByOrderId[b.order_id] : null;
+                      const checkoutAmount = Number(checkout?.total_amount || 0);
+                      const hasCheckoutAmount = Number.isFinite(checkoutAmount) && checkoutAmount > 0;
+                      const checkoutCurrency = String(checkout?.currency || '').toUpperCase();
+
+                      const originalAmount = Number(b.total_price || 0);
+                      const hasOriginalAmount = Number.isFinite(originalAmount) && originalAmount > 0;
+                      const originalCurrency = String(b.currency || '').toUpperCase();
+
                       const { amount, currency } = getResolvedBookingAmountForHost(b);
                       const amountRwf = toRwfAmount(amount, currency);
                       const { amount: hostNetAmount, currency: hostNetCurrency } = getHostNetEarningsForBooking(b);
                       const hostNetRwf = toRwfAmount(hostNetAmount, hostNetCurrency);
-                      return { booking: b, amount, currency, amountRwf, hostNetRwf };
+                      return {
+                        booking: b,
+                        amount,
+                        currency,
+                        amountRwf,
+                        originalAmount: hasOriginalAmount ? originalAmount : null,
+                        originalCurrency: originalCurrency || null,
+                        checkoutAmount: hasCheckoutAmount ? checkoutAmount : null,
+                        checkoutCurrency: checkoutCurrency || null,
+                        hostNetRwf,
+                      };
                     });
 
                     const totalRevenueRwf = bookingAmountRows.reduce((sum, row) => sum + row.amountRwf, 0);
@@ -9211,14 +9325,16 @@ ${[...new Set(filteredBookings.map(b => b.payment_method || 'Not specified'))].m
 
 DETAILED BOOKINGS
 -----------------
-${bookingAmountRows.map(({ booking: b, amount, currency, amountRwf, hostNetRwf }) => `
+${bookingAmountRows.map(({ booking: b, amount, currency, amountRwf, originalAmount, originalCurrency, checkoutAmount, checkoutCurrency, hostNetRwf }) => `
 Booking ID: ${b.id.slice(0, 8)}
 Property: ${properties.find(p => p.id === b.property_id)?.title || 'N/A'}
 Guest: ${b.guest_name || 'Guest'}
 Check-in: ${b.check_in}
 Check-out: ${b.check_out}
 Guests: ${b.guests}
-Amount Paid: ${formatMoney(amount, currency)}
+Amount Paid (Resolved): ${formatMoney(amount, currency)}
+Original Booking Amount: ${originalAmount != null ? formatMoney(originalAmount, originalCurrency || currency) : 'N/A'}
+Checkout Amount: ${checkoutAmount != null ? formatMoney(checkoutAmount, checkoutCurrency || 'RWF') : 'N/A'}
 Amount Paid (RWF): ${formatMoney(amountRwf, 'RWF')}
 Host Earnings: ${formatMoney(hostNetRwf, 'RWF')}
 Status: ${b.status}
