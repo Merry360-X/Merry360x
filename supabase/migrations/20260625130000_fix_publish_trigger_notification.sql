@@ -76,7 +76,7 @@ DECLARE
   prop_name TEXT;
   guest_name TEXT;
 BEGIN
-  SELECT COALESCE(NEW.title, p.title, 'Property') INTO prop_name
+  SELECT COALESCE(p.title, 'Property') INTO prop_name
   FROM (SELECT NULL::text) dummy
   LEFT JOIN properties p ON p.id = NEW.property_id;
 
@@ -124,7 +124,7 @@ DECLARE
 BEGIN
   IF OLD.status = NEW.status THEN RETURN NEW; END IF;
 
-  SELECT COALESCE(NEW.title, p.title, 'Property') INTO prop_name
+  SELECT COALESCE(p.title, 'Property') INTO prop_name
   FROM (SELECT NULL::text) dummy
   LEFT JOIN properties p ON p.id = NEW.property_id;
 
@@ -222,9 +222,11 @@ DECLARE
   guest_name TEXT;
   booking_rec RECORD;
 BEGIN
-  SELECT b.host_id, b.title, b.guest_name
+  SELECT b.host_id, COALESCE(p.title, 'Property') AS title, b.guest_name
   INTO booking_rec
-  FROM bookings b WHERE b.id = NEW.booking_id;
+  FROM bookings b
+  LEFT JOIN properties p ON p.id = b.property_id
+  WHERE b.id = NEW.booking_id;
 
   prop_name := COALESCE(booking_rec.title, 'Property');
   guest_name := COALESCE(booking_rec.guest_name, 'A guest');
