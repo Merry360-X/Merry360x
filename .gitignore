@@ -38,3 +38,6 @@ archive/
 
 # Local temporary assets/scripts
 .tmp/
+
+# Flutter env
+merry360x_flutter/env
