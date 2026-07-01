@@ -62,7 +62,7 @@ String? normalizeImageUrl(String? raw) {
   if (normalized == null) return null;
 
   // Apply Cloudinary transformations to limit image dimensions
-  const cloudPrefix = 'res.cloudinary.com/dghg9uebh/image/upload/';
+  const cloudPrefix = 'res.cloudinary.com/ddsluc3gd/image/upload/';
   final idx = normalized.indexOf(cloudPrefix);
   if (idx != -1) {
     final rest = normalized.substring(idx + cloudPrefix.length);
@@ -78,5 +78,5 @@ String? normalizeImageUrl(String? raw) {
   // Already an HTTP URL (non-Cloudinary) — return as-is.
   if (normalized.startsWith('http://') || normalized.startsWith('https://')) return normalized;
   // Relative path — wrap with Cloudinary defaults.
-  return 'https://res.cloudinary.com/dghg9uebh/image/upload/f_auto,q_auto:eco,dpr_auto,c_limit,w_1200/$normalized';
+  return 'https://res.cloudinary.com/ddsluc3gd/image/upload/f_auto,q_auto:eco,dpr_auto,c_limit,w_1200/$normalized';
 }

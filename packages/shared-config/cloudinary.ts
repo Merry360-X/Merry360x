@@ -5,7 +5,7 @@
 
 export const CLOUDINARY_CONFIG = {
   /** Cloudinary cloud name - MUST be identical across all platforms */
-  cloudName: 'dghg9uebh',
+  cloudName: 'ddsluc3gd',
   
   /** Unsigned upload preset - MUST be identical across all platforms */
   uploadPreset: 'MERRY360X',

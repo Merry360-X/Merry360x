@@ -66,7 +66,7 @@ List<String> resolveListingImages(Map<String, dynamic> item) {
             !raw.startsWith('//')) {
           raw = raw.startsWith('res.cloudinary.com/')
               ? 'https://$raw'
-              : 'https://res.cloudinary.com/dghg9uebh/image/upload/f_auto,q_auto:eco,dpr_auto,c_limit,w_1200/$raw';
+              : 'https://res.cloudinary.com/ddsluc3gd/image/upload/f_auto,q_auto:eco,dpr_auto,c_limit,w_1200/$raw';
         }
         if (raw.startsWith('//')) raw = 'https:$raw';
         // Skip URLs from disabled cloud accounts
@@ -176,7 +176,7 @@ String? resolveListingImageUrl(Map<String, dynamic> item) {
   if (raw.startsWith('//')) return 'https:$raw';
   if (raw.startsWith('res.cloudinary.com/')) return 'https://$raw';
   // Preserve source aspect ratio to avoid unexpected zoom/crop artifacts on cards.
-  return 'https://res.cloudinary.com/dghg9uebh/image/upload/f_auto,q_auto:eco,dpr_auto,c_limit,w_1200/$raw';
+  return 'https://res.cloudinary.com/ddsluc3gd/image/upload/f_auto,q_auto:eco,dpr_auto,c_limit,w_1200/$raw';
 }
 
 // ── Price label helper ──

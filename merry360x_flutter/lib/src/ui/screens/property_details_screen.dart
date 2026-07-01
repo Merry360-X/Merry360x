@@ -95,7 +95,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       if (url.startsWith('res.cloudinary.com/')) url = 'https://$url';
       if (!url.startsWith('http')) {
         url =
-            'https://res.cloudinary.com/dghg9uebh/image/upload/f_auto,q_auto,c_fill,w_900,h_600/$url';
+            'https://res.cloudinary.com/ddsluc3gd/image/upload/f_auto,q_auto,c_fill,w_900,h_600/$url';
       }
       precacheImage(CachedNetworkImageProvider(url), context);
     }
@@ -449,7 +449,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       if (url.startsWith('res.cloudinary.com/')) url = 'https://$url';
       if (!url.startsWith('http')) {
         url =
-            'https://res.cloudinary.com/dghg9uebh/image/upload/f_auto,q_auto,c_fill,w_900,h_600/$url';
+            'https://res.cloudinary.com/ddsluc3gd/image/upload/f_auto,q_auto,c_fill,w_900,h_600/$url';
       }
       return url;
     }).toList();

@@ -6,11 +6,11 @@ import 'dart:async';
 /// Cloudinary unsigned upload service.
 ///
 /// Configuration is now centralized in shared-config/cloudinary.ts
-/// Cloud name  : dghg9uebh
+/// Cloud name  : ddsluc3gd
 /// Upload preset: MERRY360X (unsigned)
 class CloudinaryService {
   // Shared configuration constants - MUST match packages/shared-config/cloudinary.ts
-  static const String _cloudName = 'dghg9uebh';
+  static const String _cloudName = 'ddsluc3gd';
   static const String _uploadPreset = 'MERRY360X';
   static const List<String> _disabledCloudNames = ['dxdblhmbm'];
 
