@@ -326,8 +326,6 @@ async function createBookingsForPaidCheckout(supabase, checkoutData) {
         order_id: checkoutData.id,
         total_price: item.calculated_price || item.price,
         currency: item.calculated_price_currency || item.currency || checkoutData.currency || "RWF",
-        status: "pending",
-        confirmation_status: "pending",
         payment_status: "paid",
         payment_method: "flutterwave",
         guests: bookingDetails?.guests || item.metadata?.guests || 1,
@@ -344,6 +342,8 @@ async function createBookingsForPaidCheckout(supabase, checkoutData) {
         bookingData.property_id = item.reference_id;
         bookingData.check_in = bookingDetails?.check_in || item.metadata?.check_in;
         bookingData.check_out = bookingDetails?.check_out || item.metadata?.check_out;
+        bookingData.status = "confirmed";
+        bookingData.confirmation_status = null;
       } else if (item.item_type === "tour" || item.item_type === "tour_package") {
         bookingData.booking_type = "tour";
         bookingData.tour_id = item.reference_id;
@@ -355,6 +355,15 @@ async function createBookingsForPaidCheckout(supabase, checkoutData) {
           bookingDetails?.check_out ||
           item.metadata?.check_out ||
           new Date().toISOString().split("T")[0];
+        const tourTable = item.item_type === "tour" ? "tours" : "tour_packages";
+        const { data: listing } = await supabase.from(tourTable).select("requires_confirmation").eq("id", item.reference_id).single();
+        if (listing?.requires_confirmation === true) {
+          bookingData.status = "pending";
+          bookingData.confirmation_status = "pending";
+        } else {
+          bookingData.status = "confirmed";
+          bookingData.confirmation_status = null;
+        }
       } else if (item.item_type === "transport_vehicle") {
         bookingData.booking_type = "transport";
         bookingData.transport_id = item.reference_id;
@@ -366,6 +375,8 @@ async function createBookingsForPaidCheckout(supabase, checkoutData) {
           bookingDetails?.check_out ||
           item.metadata?.check_out ||
           new Date().toISOString().split("T")[0];
+        bookingData.status = "confirmed";
+        bookingData.confirmation_status = null;
       } else {
         continue;
       }

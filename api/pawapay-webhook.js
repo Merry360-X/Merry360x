@@ -1000,9 +1000,6 @@ export default async function handler(req, res) {
             continue;
           }
 
-          // Host must confirm new bookings before they become confirmed.
-          const requiresConfirmation = true;
-
           const bookingData = {
             guest_id: checkout.user_id,
             guest_name: checkout.name || null,
@@ -1012,8 +1009,6 @@ export default async function handler(req, res) {
             total_price: item.calculated_price || item.price,
             // Use the item's original currency (matches the listing), not the checkout currency
             currency: item.calculated_price_currency || item.currency || 'USD',
-            status: requiresConfirmation ? 'pending' : 'confirmed',
-            confirmation_status: requiresConfirmation ? 'pending' : null,
             payment_status: 'paid',
             payment_method: 'mobile_money',
             guests: bookingDetails?.guests || item.metadata?.guests || 1,
@@ -1026,17 +1021,30 @@ export default async function handler(req, res) {
             bookingData.property_id = item.reference_id;
             bookingData.check_in = bookingDetails?.check_in || item.metadata?.check_in;
             bookingData.check_out = bookingDetails?.check_out || item.metadata?.check_out;
+            bookingData.status = 'confirmed';
+            bookingData.confirmation_status = null;
           } else if (item.item_type === 'tour' || item.item_type === 'tour_package') {
             bookingData.booking_type = 'tour';
             bookingData.tour_id = item.reference_id;
             // For tours, use check_in date as the tour date
             bookingData.check_in = bookingDetails?.check_in || item.metadata?.check_in || new Date().toISOString().split('T')[0];
             bookingData.check_out = bookingDetails?.check_out || item.metadata?.check_out || new Date().toISOString().split('T')[0];
+            const tourTable = item.item_type === 'tour' ? 'tours' : 'tour_packages';
+            const { data: listing } = await supabase.from(tourTable).select('requires_confirmation').eq('id', item.reference_id).single();
+            if (listing?.requires_confirmation === true) {
+              bookingData.status = 'pending';
+              bookingData.confirmation_status = 'pending';
+            } else {
+              bookingData.status = 'confirmed';
+              bookingData.confirmation_status = null;
+            }
           } else if (item.item_type === 'transport_vehicle') {
             bookingData.booking_type = 'transport';
             bookingData.transport_id = item.reference_id;
             bookingData.check_in = bookingDetails?.check_in || item.metadata?.check_in || new Date().toISOString().split('T')[0];
             bookingData.check_out = bookingDetails?.check_out || item.metadata?.check_out || new Date().toISOString().split('T')[0];
+            bookingData.status = 'confirmed';
+            bookingData.confirmation_status = null;
           }
 
           console.log("📝 Creating booking:", bookingData);

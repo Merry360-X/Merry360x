@@ -1,6 +1,6 @@
 -- Create legal_content table for Privacy Policy and Terms & Conditions
 CREATE TABLE IF NOT EXISTS legal_content (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id uuid PRIMARY KEY DEFAULT gen_rdom_uuid(),
   content_type text NOT NULL UNIQUE CHECK (content_type IN ('privacy_policy', 'terms_and_conditions')),
   title text NOT NULL,
   content jsonb NOT NULL, -- Store structured content as JSON
