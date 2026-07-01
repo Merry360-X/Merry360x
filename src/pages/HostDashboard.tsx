@@ -8268,14 +8268,6 @@ export default function HostDashboard() {
           <TabsContent value="overview">
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8" style={{ background: 'transparent' }}>
               <MetricCard
-                label="Available for Payout"
-                value={formatDashboardMoneyFromRwf(availableForPayout)}
-                icon={<DollarSign className="w-6 h-6" />}
-                accentColor="#1DB954"
-                accentGradient="from-[#1DB954] to-[#1ED760]"
-                subLabel={dashboardDisplayCurrency !== 'RWF' ? `Base: ${formatMoney(availableForPayout, 'RWF')}` : undefined}
-              />
-              <MetricCard
                 label="Properties"
                 value={`${formatNumber(publishedProperties)} / ${formatNumber((properties || []).length)}`}
                 icon={<Building2 className="w-6 h-6" />}
@@ -10703,15 +10695,6 @@ END OF REPORT
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-            {/* Available balance */}
-            <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-3">
-              <p className="text-sm text-muted-foreground">Available for payout</p>
-              <p className="text-2xl font-bold text-green-600">{formatDashboardMoneyFromRwf(availableForPayout)}</p>
-              {dashboardDisplayCurrency !== 'RWF' && (
-                <p className="text-sm text-muted-foreground">Base: {formatMoney(availableForPayout, 'RWF')}</p>
-              )}
-            </div>
-
             {/* Payout Method Selection */}
             <div className="space-y-3">
               <Label>Saved Payout Method</Label>
