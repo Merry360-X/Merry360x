@@ -173,6 +173,8 @@ const PREFETCH_ROUTE_MODULES = [
 
 function RoutePrefetch() {
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     const connection = (navigator as Navigator & {
       connection?: {
         saveData?: boolean;
@@ -196,11 +198,16 @@ function RoutePrefetch() {
       });
     };
 
-    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      const idleId = (window as any).requestIdleCallback(prefetch, { timeout: 1500 });
+    const win = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+
+    if (typeof win.requestIdleCallback === "function") {
+      const idleId = win.requestIdleCallback(prefetch, { timeout: 1500 });
       return () => {
         cancelled = true;
-        (window as any).cancelIdleCallback?.(idleId);
+        win.cancelIdleCallback?.(idleId);
       };
     }
 

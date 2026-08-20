@@ -284,6 +284,7 @@
     "errorLoading": "暂时无法加载旅游。",
     "noResults": "没有找到符合搜索条件的旅游。",
     "categories": { "all": "全部", "nature": "自然", "adventure": "冒险", "cultural": "文化", "wildlife": "野生动物", "historical": "历史" },
+    "country": { "all": "所有国家", "label": "国家" },
     "duration": { "any": "任意时长", "halfDay": "半天", "fullDay": "全天", "multiDay": "多日" },
     "badge": { "package": "套餐", "tour": "旅游" },
     "toast": { "addedTitle": "已加入行程购物车", "packageAdded": "套餐已加入购物车。", "tourAdded": "旅游已加入购物车。" }

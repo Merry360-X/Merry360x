@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Navbar from "@/components/Navbar";
@@ -99,14 +99,13 @@ export default function Stories() {
     queryKey: ["stories", "public-feed"],
     queryFn: async () => {
       const activeCutoffIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const { data, error } = await supabase
-        .from("stories")
+      const { data, error } = await (supabase.from("stories" as any) as any)
         .select("id, title, body, location, media_url, media_type, image_url, user_id, created_at")
         .gte("created_at", activeCutoffIso)
         .order("created_at", { ascending: false })
         .limit(100);
       if (error) throw error;
-      return (data ?? []) as StoryRow[];
+      return (data ?? []) as unknown as StoryRow[];
     },
   });
 
@@ -116,12 +115,11 @@ export default function Stories() {
     queryKey: ["stories", "likes", storyIds.join("|")],
     enabled: storyIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("story_likes")
+      const { data, error } = await (supabase.from("story_likes" as any) as any)
         .select("story_id, user_id")
-        .in("story_id", storyIds);
+        .in("story_id", storyIds as any);
       if (error) throw error;
-      return (data ?? []) as StoryLikeRow[];
+      return (data ?? []) as unknown as StoryLikeRow[];
     },
   });
 
@@ -129,13 +127,12 @@ export default function Stories() {
     queryKey: ["stories", "comments", storyIds.join("|")],
     enabled: storyIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("story_comments")
+      const { data, error } = await (supabase.from("story_comments" as any) as any)
         .select("id, story_id, user_id, comment_text, created_at")
-        .in("story_id", storyIds)
+        .in("story_id", storyIds as any)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as StoryCommentRow[];
+      return (data ?? []) as unknown as StoryCommentRow[];
     },
   });
 
@@ -150,12 +147,11 @@ export default function Stories() {
     queryKey: ["stories", "authors", profileIds.join("|")],
     enabled: profileIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
+      const { data, error } = await (supabase.from("profiles" as any) as any)
         .select("user_id, full_name, nickname, avatar_url")
-        .in("user_id", profileIds);
+        .in("user_id", profileIds as any);
       if (error) throw error;
-      return (data ?? []) as AuthorRow[];
+      return (data ?? []) as unknown as AuthorRow[];
     },
   });
 
@@ -204,6 +200,7 @@ export default function Stories() {
 
   const activeGroup = storyGroups[activeGroupIndex] || null;
   const activeStory = activeGroup?.stories[activeStoryIndex] || null;
+  const activeStoryId = activeStory?.id || null;
   const activeMedia = activeStory ? activeStory.media_url || activeStory.image_url : null;
   const activeStoryIsVideo = activeStory ? activeStory.media_type === "video" || isVideo(activeMedia) : false;
 
@@ -246,17 +243,21 @@ export default function Stories() {
     return isAdmin || story.user_id === user.id;
   };
 
-  const saveViewed = (nextSet: Set<string>) => {
-    setViewedIds(new Set(nextSet));
-    if (typeof window === "undefined") return;
-    localStorage.setItem(VIEWED_STORIES_KEY, JSON.stringify(Array.from(nextSet)));
-  };
-
-  const markStoryViewed = (storyId: string) => {
-    const next = new Set(viewedIds);
-    next.add(storyId);
-    saveViewed(next);
-  };
+  const markStoryViewed = useCallback((storyId: string) => {
+    setViewedIds((prev) => {
+      if (prev.has(storyId)) return prev;
+      const next = new Set(prev);
+      next.add(storyId);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(VIEWED_STORIES_KEY, JSON.stringify(Array.from(next)));
+        } catch {
+          // ignore
+        }
+      }
+      return next;
+    });
+  }, []);
 
   const openGroupViewer = (groupIndex: number, storyIndex = 0) => {
     setActiveGroupIndex(groupIndex);
@@ -264,7 +265,7 @@ export default function Stories() {
     setViewerOpen(true);
   };
 
-  const goToNextStory = () => {
+  const goToNextStory = useCallback(() => {
     if (!activeGroup || !activeStory) return;
     markStoryViewed(activeStory.id);
 
@@ -282,9 +283,9 @@ export default function Stories() {
     }
 
     setViewerOpen(false);
-  };
+  }, [activeGroup, activeStory, activeGroupIndex, activeStoryIndex, markStoryViewed, storyGroups.length]);
 
-  const goToPreviousStory = () => {
+  const goToPreviousStory = useCallback(() => {
     if (!activeGroup) return;
 
     const hasPreviousInGroup = activeStoryIndex > 0;
@@ -297,17 +298,17 @@ export default function Stories() {
     if (hasPreviousGroup) {
       const previousGroup = storyGroups[activeGroupIndex - 1];
       setActiveGroupIndex((prev) => prev - 1);
-      setActiveStoryIndex(Math.max(0, previousGroup.stories.length - 1));
+      setActiveStoryIndex(Math.max(0, (previousGroup?.stories.length ?? 1) - 1));
     }
-  };
+  }, [activeGroup, activeGroupIndex, activeStoryIndex, storyGroups]);
 
   useEffect(() => {
-    if (!viewerOpen || !activeStory) return;
-    markStoryViewed(activeStory.id);
-  }, [viewerOpen, activeStory?.id]);
+    if (!viewerOpen || !activeStoryId) return;
+    markStoryViewed(activeStoryId);
+  }, [viewerOpen, activeStoryId, markStoryViewed]);
 
   useEffect(() => {
-    if (!viewerOpen || !activeStory || activeStoryIsVideo) return;
+    if (!viewerOpen || !activeStoryId || activeStoryIsVideo) return;
 
     if (isHolding) return;
 
@@ -318,17 +319,17 @@ export default function Stories() {
     }, stepMs);
 
     return () => window.clearInterval(timer);
-  }, [viewerOpen, activeStory?.id, activeStoryIsVideo, isHolding]);
+  }, [viewerOpen, activeStoryId, activeStoryIsVideo, isHolding]);
 
   useEffect(() => {
-    if (!viewerOpen || !activeStory || activeStoryIsVideo) return;
+    if (!viewerOpen || !activeStoryId || activeStoryIsVideo) return;
     if (isHolding) return;
     if (activeProgress < 100) return;
     goToNextStory();
-  }, [viewerOpen, activeStory?.id, activeStoryIsVideo, activeProgress, isHolding]);
+  }, [viewerOpen, activeStoryId, activeStoryIsVideo, activeProgress, isHolding, goToNextStory]);
 
   useEffect(() => {
-    if (!viewerOpen || !activeStory) return;
+    if (!viewerOpen || !activeStoryId) return;
 
     setIsHolding(false);
 
@@ -338,15 +339,15 @@ export default function Stories() {
     }
 
     setActiveProgress(0);
-  }, [viewerOpen, activeStory?.id, activeStoryIsVideo]);
+  }, [viewerOpen, activeStoryId, activeStoryIsVideo]);
 
   useEffect(() => {
-    if (!viewerOpen || !activeStory) return;
+    if (!viewerOpen || !activeStoryId) return;
     setCommentDraft("");
-  }, [viewerOpen, activeStory?.id]);
+  }, [viewerOpen, activeStoryId]);
 
   useEffect(() => {
-    if (!viewerOpen || !activeStory || !activeStoryIsVideo || !videoRef.current) return;
+    if (!viewerOpen || !activeStoryId || !activeStoryIsVideo || !videoRef.current) return;
 
     const video = videoRef.current;
     const syncProgress = () => {
@@ -365,7 +366,7 @@ export default function Stories() {
       video.removeEventListener("timeupdate", syncProgress);
       video.removeEventListener("loadedmetadata", syncProgress);
     };
-  }, [viewerOpen, activeStory?.id, activeStoryIsVideo]);
+  }, [viewerOpen, activeStoryId, activeStoryIsVideo]);
 
   const handleHoldStart = () => {
     if (!viewerOpen) return;
@@ -443,7 +444,7 @@ export default function Stories() {
 
     setDeletingStoryId(story.id);
     try {
-      let query = supabase.from("stories").delete().eq("id", story.id);
+      let query = (supabase.from("stories" as any) as any).delete().eq("id", story.id);
       if (!isAdmin) {
         query = query.eq("user_id", user.id);
       }
@@ -484,14 +485,14 @@ export default function Stories() {
     const hasLiked = likedStoryIds.has(storyId);
     try {
       if (hasLiked) {
-        const { error } = await supabase
-          .from("story_likes")
+        const { error } = await (supabase
+          .from("story_likes" as any) as any)
           .delete()
           .eq("story_id", storyId)
           .eq("user_id", user.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("story_likes").insert({ story_id: storyId, user_id: user.id });
+        const { error } = await (supabase.from("story_likes" as any) as any).insert({ story_id: storyId, user_id: user.id });
         if (error) throw error;
       }
 
@@ -521,7 +522,7 @@ export default function Stories() {
 
     setIsSubmittingComment(true);
     try {
-      const { error } = await supabase.from("story_comments").insert({
+      const { error } = await (supabase.from("story_comments" as any) as any).insert({
         story_id: activeStory.id,
         user_id: user.id,
         comment_text: text,

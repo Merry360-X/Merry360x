@@ -293,6 +293,10 @@
       "wildlife": "Wildlife",
       "historical": "Historical"
     },
+    "country": {
+      "all": "All Countries",
+      "label": "Country"
+    },
     "duration": {
       "any": "Any Duration",
       "halfDay": "Half Day",

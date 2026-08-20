@@ -283,6 +283,7 @@
     "errorLoading": "Ntitwabashije kubona ingendo ubu.",
     "noResults": "Nta ngendo zihuye n'ibyo ushaka.",
     "categories": { "all": "Byose", "nature": "Kamere", "adventure": "Gukunda", "cultural": "Umuco", "wildlife": "Inyamaswa", "historical": "Amateka" },
+    "country": { "all": "Ibihugu byose", "label": "Igihugu" },
     "duration": { "any": "Igihe icyo ari cyo cyose", "halfDay": "Igice cy'umunsi", "fullDay": "Umunsi wose", "multiDay": "Iminsi myinshi" },
     "badge": { "package": "Paki", "tour": "Urugendo" },
     "toast": { "addedTitle": "Byashyizwe mu gatebo", "packageAdded": "Paki yashyizwe mu gatebo.", "tourAdded": "Urugendo rwashyizwe mu gatebo." }

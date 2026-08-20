@@ -285,6 +285,7 @@
     "errorLoading": "Imeshindikana kupakia ziara kwa sasa.",
     "noResults": "Hakuna ziara zinazolingana na utafutaji wako.",
     "categories": { "all": "Zote", "nature": "Mazingira", "adventure": "Matukio", "cultural": "Utamaduni", "wildlife": "Wanyamapori", "historical": "Historia" },
+    "country": { "all": "Nchi zote", "label": "Nchi" },
     "duration": { "any": "Muda wowote", "halfDay": "Nusu siku", "fullDay": "Siku nzima", "multiDay": "Siku nyingi" },
     "badge": { "package": "Pakiti", "tour": "Ziara" },
     "toast": { "addedTitle": "Imeongezwa kwenye kikapu", "packageAdded": "Pakiti imeongezwa kwenye kikapu chako.", "tourAdded": "Ziara imeongezwa kwenye kikapu chako." }

@@ -283,6 +283,7 @@
     "errorLoading": "Impossible de charger les circuits pour le moment.",
     "noResults": "Aucun circuit ne correspond à votre recherche.",
     "categories": { "all": "Tous", "nature": "Nature", "adventure": "Aventure", "cultural": "Culturel", "wildlife": "Faune", "historical": "Historique" },
+    "country": { "all": "Tous les pays", "label": "Pays" },
     "duration": { "any": "Toute durée", "halfDay": "Demi-journée", "fullDay": "Journée complète", "multiDay": "Plusieurs jours" },
     "badge": { "package": "Forfait", "tour": "Circuit" },
     "toast": { "addedTitle": "Ajouté au panier voyage", "packageAdded": "Forfait ajouté à votre panier.", "tourAdded": "Circuit ajouté à votre panier." }

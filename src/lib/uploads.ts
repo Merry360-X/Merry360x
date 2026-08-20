@@ -42,15 +42,20 @@ export async function uploadFile(
       fileToUpload = file;
     }
     
-    // Use Cloudinary for images and videos
+    // Try Cloudinary first if configured
     if (isCloudinaryConfigured()) {
-      const res = await uploadFileToCloudinary(fileToUpload, {
-        folder: opts.folder,
-        onProgress: (progress) => {
-          opts.onProgress?.(progress.percent);
-        },
-      });
-      return { url: res.secureUrl };
+      try {
+        const res = await uploadFileToCloudinary(fileToUpload, {
+          folder: opts.folder,
+          onProgress: (progress) => {
+            opts.onProgress?.(progress.percent);
+          },
+        });
+        return { url: res.secureUrl };
+      } catch (cloudinaryError) {
+        console.warn("[uploads] Cloudinary upload failed, falling back to Supabase Storage:", cloudinaryError);
+        // Fall back to Supabase Storage below
+      }
     }
 
     // Fallback to Supabase Storage (public bucket).
