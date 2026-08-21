@@ -66,17 +66,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const epoch = authEpochRef.current;
     // Prevent duplicate simultaneous fetches
     if (isFetchingRoles) return;
-    
+
     setIsFetchingRoles(true);
     setRolesLoading(true);
-    
+
     // Add timeout for roles query
     const queryTimeout = setTimeout(() => {
       console.warn("[AuthContext] Roles query timeout - forcing completion");
       setRolesLoading(false);
       setIsFetchingRoles(false);
     }, 5000);
-    
+
     try {
       const { data, error } = await supabase
         .from("user_roles")
@@ -97,7 +97,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const normalized = (data ?? [])
         .map((r) => String(r.role ?? "").trim().toLowerCase())
         .filter(Boolean);
-      
+
       // Deduplicate and keep only known roles.
       // Note: 'staff' is deprecated, use specific roles instead
       // Accept both 'user' and 'guest' for backward compatibility
@@ -116,7 +116,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsFetchingRoles(false);
     } catch (err) {
       clearTimeout(queryTimeout);
-      
+
       // Silently handle AbortError - expected during React cleanup/navigation
       if (err instanceof Error && err.name === "AbortError") {
         setRolesLoading(false);
@@ -136,11 +136,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const isHost = useMemo(() => roles.includes("host"), [roles]);
-  const isStaff = useMemo(() => 
-    roles.includes("financial_staff") || 
-    roles.includes("operations_staff") || 
-    roles.includes("customer_support"), 
-  [roles]);
+  const isStaff = useMemo(() =>
+    roles.includes("financial_staff") ||
+    roles.includes("operations_staff") ||
+    roles.includes("customer_support"),
+    [roles]);
   const isAdmin = useMemo(() => roles.includes("admin"), [roles]);
   const isFinancialStaff = useMemo(() => roles.includes("financial_staff"), [roles]);
   const isOperationsStaff = useMemo(() => roles.includes("operations_staff"), [roles]);
@@ -150,7 +150,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     let mounted = true;
     let subscription: { unsubscribe: () => void } | null = null;
     const epoch = ++authEpochRef.current;
-    
+
     // Failsafe timeout to prevent infinite loading
     const failsafeTimeout = setTimeout(() => {
       if (mounted && authEpochRef.current === epoch) {
@@ -161,23 +161,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setInitialized(true);
       }
     }, 5000); // 5 second timeout for faster resolution
-    
+
     const initializeAuth = async () => {
       try {
         // Add timeout to getSession to prevent hanging
         const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) => 
+        const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Session check timeout')), 3000)
         );
-        
+
         const { data: { session }, error: sessionError } = await Promise.race([
           sessionPromise,
           timeoutPromise
         ]) as any;
-        
+
         if (!mounted) return;
         if (authEpochRef.current !== epoch) return;
-        
+
         if (sessionError) {
           console.warn("[AuthContext] Session error:", sessionError);
           setSession(null);
@@ -189,22 +189,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           clearTimeout(failsafeTimeout);
           return;
         }
-        
+
         // Verify and refresh session if needed (skip this as it's slow)
         // Session will auto-refresh via onAuthStateChange if needed
 
         if (!mounted) return;
         if (authEpochRef.current !== epoch) return;
-        
+
         // Set initial state from existing session
         setSession(session);
         setUser(session?.user ?? null);
-        
+
         // Set loading to false immediately for fast initial render
         setIsLoading(false);
         setInitialized(true);
         clearTimeout(failsafeTimeout);
-        
+
         // Fetch roles in background without blocking
         if (session?.user && !initialized) {
           void fetchRoles(session.user.id);
@@ -212,30 +212,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setRoles([]);
           setRolesLoading(false);
         }
-        
+
         // 4. Set up listener for auth changes (after initial load)
         const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
           async (event, newSession) => {
             if (!mounted) return;
             // Ignore auth events from a previous epoch.
             if (authEpochRef.current !== epoch) return;
-            
+
             if (import.meta.env.DEV) {
               console.debug('[AuthContext] Auth event:', event);
             }
-            
+
             setSession(newSession);
             setUser(newSession?.user ?? null);
-            
+
             // Immediately update loading state for fast UI
             setIsLoading(false);
-            
+
             if (newSession?.user) {
               // Fetch roles in background without blocking UI
               if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
                 // Don't await - let it happen in background
                 void fetchRoles(newSession.user.id);
-                
+
                 // If user just confirmed email (SIGNED_IN event), they're logged in automatically
                 // The navbar will show profile button instead of sign in
               }
@@ -244,18 +244,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               setRoles([]);
               setRolesLoading(false);
             }
-            
+
             // Invalidate queries on auth state change
             queryClient.invalidateQueries();
           }
         );
-        
+
         subscription = authSubscription;
-        
+
       } catch (err) {
         if (!mounted) return;
         if (authEpochRef.current !== epoch) return;
-        
+
         // Handle initialization errors
         if (err instanceof Error && (
           err.name === "AbortError" ||
@@ -265,7 +265,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setRolesLoading(false);
           return;
         }
-        
+
         console.error("[AuthContext] Initialization error:", err);
         setSession(null);
         setUser(null);
@@ -276,7 +276,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         clearTimeout(failsafeTimeout);
       }
     };
-    
+
     void initializeAuth();
 
     return () => {
@@ -329,18 +329,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           fullName,
           firstName: options?.firstName,
           name,
+          type: "both",
         }),
       }).catch((err) => {
         console.warn("[AuthContext] Welcome email send failed:", err);
       });
     }
-    
+
     // If email confirmation is disabled, user is signed in immediately
     if (!error && data.session) {
       setSession(data.session);
       setUser(data.session.user);
       setIsLoading(false);
-      
+
       // Fetch roles in background
       void fetchRoles(data.session.user.id);
 
@@ -360,7 +361,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           if (profileError) {
             console.warn("[AuthContext] Failed to upsert profile:", profileError.message);
           }
-          
+
           // Award loyalty points for completing profile during signup
           try {
             await supabase.rpc("add_loyalty_points" as any, {
@@ -379,7 +380,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       })();
     }
-    
+
     return { error };
   };
 
@@ -392,17 +393,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       15000,
       "Sign-in request timed out. Please check your connection and try again.",
     );
-    
+
     if (!error && data.session) {
       // Immediately update state for instant UI feedback
       setSession(data.session);
       setUser(data.session.user);
       setIsLoading(false);
-      
+
       // Fetch roles in background
       void fetchRoles(data.session.user.id);
     }
-    
+
     return { error };
   };
 
@@ -422,7 +423,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Clear cached server state (React Query) so user-specific data disappears instantly.
     queryClient.clear();
-    
+
     // Clear host application progress from localStorage
     localStorage.removeItem('host_application_progress');
 

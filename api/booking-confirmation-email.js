@@ -7,6 +7,7 @@ import {
   getSafeRecipientEmail,
   keyValueRows,
   renderMinimalEmail,
+  generateEnhancedBookingConfirmationHtml,
 } from "../lib/email-template-kit.js";
 
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
@@ -216,42 +217,7 @@ function generateHostPaymentStatusHtml({ resolved, booking, source, effectivePay
 }
 
 function generateBookingConfirmationHtml(booking) {
-  const reviewUrl = booking.reviewToken
-    ? `https://merry360x.com/review/${booking.reviewToken}`
-    : `https://merry360x.com/my-bookings`;
-
-  const isMultiItem = booking.items && Array.isArray(booking.items) && booking.items.length > 1;
-  const itemsHtml = isMultiItem
-    ? `<div style="margin:0 0 14px;">${booking.items
-        .map(
-          (item) => `<p style="margin:0 0 6px;color:#374151;font-size:14px;">• ${escapeHtml(item.title || "Item")} — ${escapeHtml(formatMoney(item.price, item.currency || booking.currency))}</p>`
-        )
-        .join("")}</div>`
-    : "";
-
-  const details = keyValueRows([
-    { label: isMultiItem ? "Order" : "Booking", value: escapeHtml(booking.bookingId?.slice(0, 8).toUpperCase() || "—") },
-    { label: "Service", value: escapeHtml(booking.propertyTitle || "Booking") },
-    { label: "Location", value: escapeHtml(booking.location || "—") },
-    { label: "Check-in", value: escapeHtml(formatDate(booking.checkIn)) },
-    { label: "Check-out", value: escapeHtml(formatDate(booking.checkOut)) },
-    { label: "Guests", value: escapeHtml(`${booking.guests || 1}`) },
-    { label: "Nights", value: escapeHtml(`${booking.nights || 1}`) },
-    { label: "Total Paid", value: escapeHtml(formatMoney(booking.totalPrice, booking.currency)) },
-  ]);
-
-  const stars = [1, 2, 3, 4, 5]
-    .map((star) => `<a href="${reviewUrl}?rating=${star}" style="display:inline-block;text-decoration:none;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;margin-right:6px;color:#111827;font-size:13px;">${"★".repeat(star)}</a>`)
-    .join("");
-
-  return renderMinimalEmail({
-    eyebrow: "Booking Confirmation",
-    title: "Your booking is confirmed",
-    subtitle: "Thank you for booking with Merry 360 Experiences.",
-    bodyHtml: `${itemsHtml}${details}<div style="margin-top:14px;"><p style="margin:0 0 8px;color:#6b7280;font-size:12px;">Rate your experience:</p>${stars}</div><div style="margin-top:16px;"><a href="${GOOGLE_REVIEW_URL}" style="display:inline-block;text-decoration:none;background:#111827;color:#ffffff;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;">Leave a Website Review on Google</a></div>`,
-    ctaText: "View My Bookings",
-    ctaUrl: "https://merry360x.com/my-bookings",
-  });
+  return generateEnhancedBookingConfirmationHtml(booking);
 }
 
 function generateBookingDecisionHtml(payload) {
@@ -918,15 +884,25 @@ export default async function handler(req, res) {
       bookingId,
       guestName,
       guestEmail,
+      firstName,
+      bookingDate,
+      createdAt,
+      serviceName,
       propertyTitle,
       propertyImage,
       location,
       checkIn,
       checkOut,
+      checkInTime,
+      checkOutTime,
+      duration,
       guests,
       nights,
       totalPrice,
+      totalAmount,
       currency,
+      hostName,
+      items,
       // Fee breakdown fields
       basePriceAmount,
       serviceFeeAmount,
@@ -945,15 +921,23 @@ export default async function handler(req, res) {
     const booking = {
       bookingId,
       guestName,
-      propertyTitle,
+      firstName: firstName || (guestName ? String(guestName).trim().split(" ")[0] : ""),
+      bookingDate: bookingDate || createdAt || new Date().toISOString(),
+      serviceName: serviceName || propertyTitle || "Booking",
+      propertyTitle: propertyTitle || serviceName || "Booking",
       propertyImage,
       location,
       checkIn,
       checkOut,
+      checkInTime,
+      checkOutTime,
+      duration,
       guests,
       nights,
-      totalPrice,
+      totalPrice: totalPrice || totalAmount,
       currency,
+      hostName,
+      items,
       basePriceAmount,
       serviceFeeAmount,
       hostEarningsAmount,
