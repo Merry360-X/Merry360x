@@ -664,7 +664,7 @@ const Accommodations = () => {
                             </span>
                           </div>
                           <Link
-                            to={`/accommodations/${current.id}`}
+                            to={`/properties/${current.id}`}
                             className="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95"
                           >
                             Explore Property
