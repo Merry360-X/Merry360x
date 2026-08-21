@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, Star, ChevronLeft, ChevronRight } from "lucide-react";
-import { motion } from "framer-motion";
+import { Search, Star, ChevronLeft, ChevronRight, MapPin, Sparkles, Filter } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useFavorites } from "@/hooks/useFavorites";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Filter } from "lucide-react";
 import { AMENITIES } from "@/lib/amenities";
 import { formatMoney } from "@/lib/money";
 import { convertAmount } from "@/lib/fx";
@@ -67,16 +66,14 @@ const fetchProperties = async (args: {
   bedrooms?: number | null; // null = any, 0 = studio, 1-5 = exact, 6 = 6+
 }) => {
   try {
-    let query = supabase
-      .from("properties")
+    let query = (supabase.from("properties") as any)
       .select(
-        "id, title, location, price_per_night, price_per_month, available_for_monthly_rental, monthly_only_listing, currency, property_type, rating, review_count, images, created_at, bedrooms, bathrooms, beds, lat, lng, host_id, max_guests, check_in_time, check_out_time, smoking_allowed, events_allowed, pets_allowed"
+        "id, title, location, price_per_night, price_per_month, available_for_monthly_rental, monthly_only_listing, currency, property_type, rating, review_count, images, main_image, created_at, bedrooms, bathrooms, beds, lat, lng, host_id, max_guests, check_in_time, check_out_time, smoking_allowed, events_allowed, pets_allowed"
       )
       .eq("is_published", true)
       .order("created_at", { ascending: false })
       .order("rating", { ascending: false })
-      .order("review_count", { ascending: false })
-      ;
+      .order("review_count", { ascending: false });
 
     const trimmed = args.search.trim();
     const searchTerms = trimmed
@@ -512,10 +509,10 @@ const Accommodations = () => {
 
       const { data: reviews } = propIds.length
         ? await supabase
-            .from("property_reviews")
-            .select("rating, property_id")
-            .in("property_id", propIds)
-            .or("is_hidden.eq.false,is_hidden.is.null")
+          .from("property_reviews")
+          .select("rating, property_id")
+          .in("property_id", propIds)
+          .or("is_hidden.eq.false,is_hidden.is.null")
         : { data: [] as Array<{ rating: number; property_id: string }>, error: null };
       const ratings = (reviews ?? []).map((r) => Number(r.rating)).filter((n) => Number.isFinite(n) && n > 0);
       const reviewCount = ratings.length;
@@ -558,6 +555,23 @@ const Accommodations = () => {
     (monthlyFilterMode !== "all" ? 1 : 0);
   const totalPages = Math.ceil(properties.length / ITEMS_PER_PAGE);
 
+  // Featured cover accommodations for sliding banner
+  const featuredCoverAccommodations = useMemo(() => {
+    return properties
+      .filter((p) => (p as any).main_image || (p.images && p.images.length > 0))
+      .slice(0, 8);
+  }, [properties]);
+
+  const [currentCoverIdx, setCurrentCoverIdx] = useState(0);
+
+  useEffect(() => {
+    if (featuredCoverAccommodations.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentCoverIdx((prev) => (prev + 1) % featuredCoverAccommodations.length);
+    }, 5500);
+    return () => clearInterval(interval);
+  }, [featuredCoverAccommodations.length]);
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -581,8 +595,137 @@ const Accommodations = () => {
         </div>
       </div>
 
+      {/* Featured Accommodation Cover Carousel Banner */}
+      {featuredCoverAccommodations.length > 0 && (
+        <div className="container mx-auto px-4 lg:px-8 pt-6 pb-2">
+          <div className="relative w-full h-64 sm:h-80 md:h-96 lg:h-[400px] rounded-2xl overflow-hidden shadow-card border border-border/40 group">
+            <AnimatePresence mode="wait">
+              {(() => {
+                const current = featuredCoverAccommodations[currentCoverIdx] || featuredCoverAccommodations[0];
+                if (!current) return null;
+                const coverImg = (current as any).main_image || current.images?.[0] || "";
+                const price = Number((current as any).monthly_only_listing ? ((current as any).price_per_month ?? 0) : (current.price_per_night ?? 0));
+                const period = (current as any).monthly_only_listing ? "month" : "night";
+                const displayPrice = (() => {
+                  const from = String(current.currency || "RWF");
+                  const converted = convertAmount(price, from, preferredCurrency, usdRates);
+                  return formatMoney(converted ?? price, converted !== null ? preferredCurrency : from);
+                })();
+
+                return (
+                  <motion.div
+                    key={current.id}
+                    initial={{ opacity: 0, scale: 1.04 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.6, ease: "easeOut" }}
+                    className="absolute inset-0 w-full h-full"
+                  >
+                    <img
+                      src={coverImg}
+                      alt={current.title}
+                      className="w-full h-full object-cover object-center"
+                      loading="eager"
+                    />
+                    {/* Gradient overlays */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/10" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/20 to-transparent" />
+
+                    {/* Content Overlay */}
+                    <div className="absolute inset-0 p-5 sm:p-7 md:p-9 flex flex-col justify-between">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/90 text-primary-foreground backdrop-blur-md text-xs font-semibold shadow-sm">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Featured Stay</span>
+                        </div>
+                        {current.rating && Number(current.rating) > 0 && (
+                          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/50 text-white backdrop-blur-md text-xs font-medium border border-white/10">
+                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                            <span>{Number(current.rating).toFixed(1)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="max-w-2xl text-white">
+                        <div className="flex items-center gap-1.5 text-xs sm:text-sm text-white/80 font-medium mb-1.5">
+                          <MapPin className="w-4 h-4 text-primary shrink-0" />
+                          <span className="line-clamp-1">{current.location}</span>
+                        </div>
+                        <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold tracking-tight mb-3 line-clamp-2 drop-shadow-md text-white">
+                          {current.title}
+                        </h2>
+                        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-xl sm:text-2xl font-bold text-white">
+                              {displayPrice}
+                            </span>
+                            <span className="text-xs sm:text-sm text-white/75">
+                              / {period}
+                            </span>
+                          </div>
+                          <Link
+                            to={`/accommodations/${current.id}`}
+                            className="inline-flex items-center justify-center px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95"
+                          >
+                            Explore Property
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })()}
+            </AnimatePresence>
+
+            {/* Navigation Arrows */}
+            {featuredCoverAccommodations.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentCoverIdx(
+                      (prev) => (prev - 1 + featuredCoverAccommodations.length) % featuredCoverAccommodations.length
+                    )
+                  }
+                  aria-label="Previous Slide"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-md flex items-center justify-center border border-white/10 transition-all opacity-80 hover:opacity-100 shadow-md"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentCoverIdx((prev) => (prev + 1) % featuredCoverAccommodations.length)
+                  }
+                  aria-label="Next Slide"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-md flex items-center justify-center border border-white/10 transition-all opacity-80 hover:opacity-100 shadow-md"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+
+                {/* Dots indicator */}
+                <div className="absolute bottom-3 right-4 sm:bottom-4 sm:right-6 flex items-center gap-1.5 z-10">
+                  {featuredCoverAccommodations.map((item, idx) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setCurrentCoverIdx(idx)}
+                      aria-label={`Go to slide ${idx + 1}`}
+                      className={`h-1.5 sm:h-2 rounded-full transition-all duration-300 ${idx === currentCoverIdx
+                        ? "w-6 sm:w-8 bg-primary shadow-sm"
+                        : "w-1.5 sm:w-2 bg-white/40 hover:bg-white/70"
+                        }`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
-      <div className="container mx-auto px-4 lg:px-8 py-12 pb-24 lg:pb-12">
+      <div className="container mx-auto px-4 lg:px-8 py-10 pb-24 lg:pb-12">
         <div className="mb-8">
           <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2">{t("accommodations.title")}</h1>
           <div className="flex flex-wrap items-center gap-2">
@@ -711,11 +854,10 @@ const Accommodations = () => {
                               return Array.from(next);
                             })
                           }
-                          className={`px-3 py-2 rounded-full text-sm border transition-colors ${
-                            selectedTypes.includes(type)
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-background text-foreground border-border hover:border-primary"
-                          }`}
+                          className={`px-3 py-2 rounded-full text-sm border transition-colors ${selectedTypes.includes(type)
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-foreground border-border hover:border-primary"
+                            }`}
                         >
                           {type}
                         </button>
@@ -736,9 +878,8 @@ const Accommodations = () => {
                           aria-label={`Minimum rating ${star}`}
                         >
                           <Star
-                            className={`w-6 h-6 transition-colors ${
-                              minRating >= star ? "fill-primary text-primary" : "text-muted-foreground hover:text-primary"
-                            }`}
+                            className={`w-6 h-6 transition-colors ${minRating >= star ? "fill-primary text-primary" : "text-muted-foreground hover:text-primary"
+                              }`}
                           />
                         </button>
                       ))}
@@ -774,11 +915,10 @@ const Accommodations = () => {
                           key={String(opt.value)}
                           type="button"
                           onClick={() => setBedroomFilter(opt.value === bedroomFilter ? null : opt.value)}
-                          className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
-                            bedroomFilter === opt.value
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-background text-foreground border-border hover:border-primary"
-                          }`}
+                          className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${bedroomFilter === opt.value
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-foreground border-border hover:border-primary"
+                            }`}
                         >
                           {opt.label}
                         </button>
@@ -800,11 +940,10 @@ const Accommodations = () => {
                           key={opt.value}
                           type="button"
                           onClick={() => setMonthlyFilterMode(opt.value as MonthlyFilterMode)}
-                          className={`px-3 py-2 rounded-full text-sm border transition-colors ${
-                            monthlyFilterMode === opt.value
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-background text-foreground border-border hover:border-primary"
-                          }`}
+                          className={`px-3 py-2 rounded-full text-sm border transition-colors ${monthlyFilterMode === opt.value
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-foreground border-border hover:border-primary"
+                            }`}
                         >
                           {opt.label}
                         </button>
@@ -831,11 +970,10 @@ const Accommodations = () => {
                                 return Array.from(next);
                               })
                             }
-                            className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-colors ${
-                              active
-                                ? "bg-primary/10 border-primary text-primary"
-                                : "bg-background border-border text-foreground hover:border-primary"
-                            }`}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-colors ${active
+                              ? "bg-primary/10 border-primary text-primary"
+                              : "bg-background border-border text-foreground hover:border-primary"
+                              }`}
                           >
                             <Icon className="w-4 h-4" />
                             <span className="text-sm">{a.label}</span>
@@ -923,7 +1061,7 @@ const Accommodations = () => {
                           <div className="font-medium text-sm text-primary">{formatMoney(maxPrice, preferredCurrency)}</div>
                         </div>
                       </div>
-                      
+
                       {/* Slider */}
                       <Slider
                         value={[maxPriceUsd]}
@@ -933,7 +1071,7 @@ const Accommodations = () => {
                         step={PRICE_SLIDER_STEP_USD}
                         className="py-2"
                       />
-                      
+
                       {/* Quick presets */}
                       <div className="flex flex-wrap gap-1.5">
                         {[100, 250, 500, 1000, PRICE_SLIDER_MAX_USD].map((val) => (
@@ -941,11 +1079,10 @@ const Accommodations = () => {
                             key={val}
                             type="button"
                             onClick={() => setMaxPriceUsd(val)}
-                            className={`px-2 py-1 text-xs rounded-full border transition-colors ${
-                              maxPriceUsd === val
-                                ? "bg-primary text-primary-foreground border-primary"
-                                : "bg-background border-border hover:border-primary"
-                            }`}
+                            className={`px-2 py-1 text-xs rounded-full border transition-colors ${maxPriceUsd === val
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-background border-border hover:border-primary"
+                              }`}
                           >
                             {formatMoney(convertAmount(val, "USD", preferredCurrency, usdRates) ?? val, preferredCurrency)}
                           </button>
@@ -971,11 +1108,10 @@ const Accommodations = () => {
                               return Array.from(next);
                             })
                           }
-                          className={`px-3 py-2 rounded-full text-sm border transition-colors ${
-                            selectedTypes.includes(type)
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-background text-foreground border-border hover:border-primary"
-                          }`}
+                          className={`px-3 py-2 rounded-full text-sm border transition-colors ${selectedTypes.includes(type)
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-foreground border-border hover:border-primary"
+                            }`}
                         >
                           {type}
                         </button>
@@ -997,9 +1133,8 @@ const Accommodations = () => {
                           aria-label={`Minimum rating ${star}`}
                         >
                           <Star
-                            className={`w-5 h-5 transition-colors ${
-                              minRating >= star ? "fill-primary text-primary" : "text-muted-foreground hover:text-primary"
-                            }`}
+                            className={`w-5 h-5 transition-colors ${minRating >= star ? "fill-primary text-primary" : "text-muted-foreground hover:text-primary"
+                              }`}
                           />
                         </button>
                       ))}
@@ -1037,11 +1172,10 @@ const Accommodations = () => {
                           key={String(opt.value)}
                           type="button"
                           onClick={() => setBedroomFilter(opt.value === bedroomFilter ? null : opt.value)}
-                          className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
-                            bedroomFilter === opt.value
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-background text-foreground border-border hover:border-primary"
-                          }`}
+                          className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${bedroomFilter === opt.value
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-foreground border-border hover:border-primary"
+                            }`}
                         >
                           {opt.label}
                         </button>
@@ -1063,11 +1197,10 @@ const Accommodations = () => {
                           key={opt.value}
                           type="button"
                           onClick={() => setMonthlyFilterMode(opt.value as MonthlyFilterMode)}
-                          className={`px-3 py-2 rounded-full text-sm border transition-colors ${
-                            monthlyFilterMode === opt.value
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-background text-foreground border-border hover:border-primary"
-                          }`}
+                          className={`px-3 py-2 rounded-full text-sm border transition-colors ${monthlyFilterMode === opt.value
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-foreground border-border hover:border-primary"
+                            }`}
                         >
                           {opt.label}
                         </button>
@@ -1095,11 +1228,10 @@ const Accommodations = () => {
                                 return Array.from(next);
                               })
                             }
-                            className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-colors ${
-                              active
-                                ? "bg-primary/10 border-primary text-primary"
-                                : "bg-background border-border text-foreground hover:border-primary"
-                            }`}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-colors ${active
+                              ? "bg-primary/10 border-primary text-primary"
+                              : "bg-background border-border text-foreground hover:border-primary"
+                              }`}
                           >
                             <Icon className="w-4 h-4" />
                             <span className="text-sm">{a.label}</span>
@@ -1115,7 +1247,7 @@ const Accommodations = () => {
 
           {/* Properties Grid */}
           <div className="flex-1">
-              {/* All screens: 3-column grid */}
+            {/* All screens: 3-column grid */}
             {mainContentLoading ? (
               <div className="col-span-full">
                 <LoadingSpinner message={t("common.loading")} />
@@ -1140,34 +1272,35 @@ const Accommodations = () => {
                   {properties
                     .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
                     .map((property) => (
-                    <motion.div
-                      key={property.id}
-                      variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }}
-                      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-                    >
-                      <PropertyCard
-                      id={property.id}
-                      image={property.images?.[0] ?? null}
-                      images={property.images ?? null}
-                      title={property.title}
-                      location={property.location}
-                      rating={Number(property.rating) || 0}
-                      reviews={property.review_count || 0}
-                      price={Number((property as any).monthly_only_listing ? ((property as any).price_per_month ?? 0) : (property.price_per_night ?? 0))}
-                      pricePeriod={(property as any).monthly_only_listing ? "month" : "night"}
-                      currency={property.currency}
-                      type={property.property_type}
-                      isFavorited={favoritesSet.has(property.id)}
-                      onToggleFavorite={async () => {
-                        const isFav = favoritesSet.has(property.id);
-                        const changed = await toggleFavorite(String(property.id), isFav);
-                        if (changed) {
-                          await qc.invalidateQueries({ queryKey: ["favorites", "ids", user?.id] });
-                        }
-                      }}
-                    />
-                    </motion.div>
-                  ))}
+                      <motion.div
+                        key={property.id}
+                        variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }}
+                        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                      >
+                        <PropertyCard
+                          id={property.id}
+                          image={(property as any).main_image || property.images?.[0] || null}
+                          images={property.images ?? null}
+                          mainImage={(property as any).main_image ?? null}
+                          title={property.title}
+                          location={property.location}
+                          rating={Number(property.rating) || 0}
+                          reviews={property.review_count || 0}
+                          price={Number((property as any).monthly_only_listing ? ((property as any).price_per_month ?? 0) : (property.price_per_night ?? 0))}
+                          pricePeriod={(property as any).monthly_only_listing ? "month" : "night"}
+                          currency={property.currency}
+                          type={property.property_type}
+                          isFavorited={favoritesSet.has(property.id)}
+                          onToggleFavorite={async () => {
+                            const isFav = favoritesSet.has(property.id);
+                            const changed = await toggleFavorite(String(property.id), isFav);
+                            if (changed) {
+                              await qc.invalidateQueries({ queryKey: ["favorites", "ids", user?.id] });
+                            }
+                          }}
+                        />
+                      </motion.div>
+                    ))}
                 </motion.div>
 
                 {/* Pagination Controls */}
@@ -1187,7 +1320,7 @@ const Accommodations = () => {
                     <span className="sm:hidden text-sm text-muted-foreground px-2">
                       Page {currentPage} of {totalPages}
                     </span>
-                    
+
                     <div className="hidden sm:flex items-center gap-1">
                       {Array.from({ length: totalPages }, (_, i) => i + 1)
                         .filter(page => {
@@ -1213,7 +1346,7 @@ const Accommodations = () => {
                           </>
                         ))}
                     </div>
-                    
+
                     <Button
                       variant="outline"
                       size="sm"

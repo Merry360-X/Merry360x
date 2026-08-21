@@ -14,6 +14,8 @@ export interface PropertyCardProps {
   id?: string;
   image?: string | null;
   images?: string[] | null;
+  mainImage?: string | null;
+  coverImage?: string | null;
   title: string;
   location: string;
   rating: number;
@@ -41,6 +43,8 @@ const PropertyCard = ({
   currency = "RWF",
   type,
   images,
+  mainImage,
+  coverImage,
   isFavorited,
   onToggleFavorite,
   priority = false,
@@ -58,7 +62,13 @@ const PropertyCard = ({
     return formatMoney(converted ?? amount, converted !== null ? preferredCurrency : fromCurrency);
   };
 
-  const gallery = images?.length ? images : image ? [image] : [];
+  const gallery = useMemo(() => {
+    const cover = (mainImage || coverImage)?.trim() || null;
+    const rawList = images?.length ? images : image ? [image] : [];
+    if (!cover) return rawList;
+    const filtered = rawList.filter((img) => img !== cover);
+    return [cover, ...filtered];
+  }, [images, image, mainImage, coverImage]);
   const forwardedQuery = useMemo(() => {
     const params = new URLSearchParams(routerLocation.search);
     const keepKeys = ["q", "location", "start", "end", "adults", "children", "infants", "pets", "stay", "monthly", "duration", "guests"];
