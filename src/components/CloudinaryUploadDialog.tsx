@@ -18,9 +18,14 @@ type UploadItem = {
 };
 
 const isImageUrl = (url: string) =>
-  /\/image\/upload\//i.test(url) || /\.(png|jpe?g|webp|gif|avif)(\?.*)?$/i.test(url);
+  /\/image\/upload\//i.test(url) || /\.(png|jpe?g|webp|gif|avif|heic|heif|bmp|svg)(\?.*)?$/i.test(url);
 const isVideoUrl = (url: string) =>
-  /\/video\/upload\//i.test(url) || /\.(mp4|webm|mov|m4v|avi)(\?.*)?$/i.test(url);
+  /\/video\/upload\//i.test(url) || /\.(mp4|webm|mov|m4v|avi|3gp|mkv|ogv|ts)(\?.*)?$/i.test(url) || url.includes("/video/");
+
+const isVideoFile = (f: File) =>
+  f.type.startsWith("video/") || /\.(mp4|mov|webm|m4v|avi|3gp|mkv|ogv|ts)$/i.test(f.name);
+const isImageFile = (f: File) =>
+  f.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|avif|heic|heif|bmp|svg)$/i.test(f.name);
 
 export function CloudinaryUploadDialog(props: {
   title: string;
@@ -77,8 +82,9 @@ export function CloudinaryUploadDialog(props: {
     const max = effectiveMaxFiles;
     const singleReplaceMode = max === 1;
     
-    // File size validation (10MB limit)
-    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB in bytes
+    // File size validation (100MB for video, 20MB for image/others)
+    const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20MB
+    const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB
     const oversizedFiles: string[] = [];
     const invalidTypeFiles: string[] = [];
 
@@ -86,22 +92,28 @@ export function CloudinaryUploadDialog(props: {
     for (const f of Array.from(files)) {
       if (!singleReplaceMode && Number.isFinite(max) && props.value.length + items.length + next.length >= max) break;
       
+      const isVideo = isVideoFile(f);
+      const isImage = isImageFile(f);
+      const maxAllowedSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
+
       // Check file size
-      if (f.size > MAX_FILE_SIZE) {
-        oversizedFiles.push(f.name);
+      if (f.size > maxAllowedSize) {
+        oversizedFiles.push(`${f.name} (${isVideo ? ">100MB" : ">20MB"})`);
         continue;
       }
       
       // Check file type if accept is specified
       if (props.accept) {
-        const acceptedTypes = props.accept.split(',').map(t => t.trim());
+        const acceptedTypes = props.accept.split(',').map(t => t.trim().toLowerCase());
         const isAccepted = acceptedTypes.some(type => {
           if (type.startsWith('.')) {
-            return f.name.toLowerCase().endsWith(type.toLowerCase());
+            return f.name.toLowerCase().endsWith(type);
           }
-          if (type.includes('/*')) {
-            const category = type.split('/')[0];
-            return f.type.startsWith(category + '/');
+          if (type === 'video/*' || type.startsWith('video/')) {
+            return isVideo || f.type.startsWith('video/');
+          }
+          if (type === 'image/*' || type.startsWith('image/')) {
+            return isImage || f.type.startsWith('image/');
           }
           return f.type === type;
         });
@@ -116,7 +128,7 @@ export function CloudinaryUploadDialog(props: {
       next.push({
         id,
         file: f,
-        previewUrl: (f.type.startsWith("image/") || f.type.startsWith("video/")) ? URL.createObjectURL(f) : null,
+        previewUrl: (isVideo || isImage) ? URL.createObjectURL(f) : null,
         percent: 0,
         status: "queued",
       });
@@ -129,13 +141,13 @@ export function CloudinaryUploadDialog(props: {
       toast({
         variant: "destructive",
         title: "File size limit exceeded",
-        description: `The following file(s) exceed the 10MB limit: ${oversizedFiles.join(', ')}. Please compress or resize your files.`,
+        description: `The following file(s) exceed the allowed limit (photos up to 20MB, videos up to 100MB): ${oversizedFiles.join(', ')}.`,
       });
     }
     
     // Show error toast for invalid file types
     if (invalidTypeFiles.length > 0) {
-      const acceptedFormats = props.accept || 'any file type';
+      const acceptedFormats = props.accept || 'any supported file';
       toast({
         variant: "destructive",
         title: "Invalid file type",
@@ -335,9 +347,9 @@ export function CloudinaryUploadDialog(props: {
                 <div className="w-20 h-20 rounded-2xl bg-muted flex items-center justify-center">
                   <UploadCloud className="w-10 h-10 text-muted-foreground" />
                 </div>
-                <div className="text-2xl font-bold text-foreground">Click to upload photos</div>
-                <div className="text-muted-foreground">or drag and drop</div>
-                <div className="text-sm text-muted-foreground">PNG, JPG, or Video up to 10MB each</div>
+                <div className="text-2xl font-bold text-foreground">Click to upload photos or videos</div>
+                <div className="text-muted-foreground">or drag and drop here</div>
+                <div className="text-sm text-muted-foreground">PNG, JPG, MP4, MOV, WebM (photos up to 20MB, videos up to 100MB)</div>
                 <Button type="button" className="px-10" onClick={pickFiles}>
                   Browse Files
                 </Button>
@@ -350,7 +362,7 @@ export function CloudinaryUploadDialog(props: {
                   {items.map((item) => (
                     <div key={item.id} className="relative aspect-square rounded-xl overflow-hidden bg-muted border border-border group">
                       {item.previewUrl ? (
-                        item.file.type.startsWith("video/") ? (
+                        isVideoFile(item.file) ? (
                           <video src={item.previewUrl} className="w-full h-full object-cover" muted playsInline />
                         ) : (
                           <img src={item.previewUrl} alt={item.file.name} className="w-full h-full object-cover" />

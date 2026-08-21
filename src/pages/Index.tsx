@@ -88,7 +88,7 @@ const parsePackageDurationDays = (duration: string | null | undefined): number |
 
 const isVideoMedia = (url?: string | null) => {
   if (!url) return false;
-  return /\/video\/upload\//i.test(url) || /\.(mp4|webm|mov|m4v|avi)(\?.*)?$/i.test(url);
+  return /\/video\/upload\//i.test(url) || /\.(mp4|webm|mov|m4v|avi|3gp|mkv|ogv|ts)(\?.*)?$/i.test(url) || url.includes("/video/");
 };
 
 const Index = () => {
@@ -143,16 +143,14 @@ const Index = () => {
     queryKey: ["home-popular-tours"],
     queryFn: async () => {
       const [toursRes, packagesRes] = await Promise.all([
-        supabase
-          .from("tours")
-          .select("id, title, location, price_per_person, currency, images, rating, review_count, category, duration_days, created_by, pricing_tiers")
+        (supabase.from("tours") as any)
+          .select("id, title, location, price_per_person, currency, images, rating, review_count, category, duration_days, created_by, pricing_tiers, is_published")
           .eq("is_published", true)
           .order("rating", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false })
           .limit(12),
-        supabase
-          .from("tour_packages")
-          .select("id, title, city, country, price_per_adult, currency, cover_image, gallery_images, category, duration, host_id")
+        (supabase.from("tour_packages") as any)
+          .select("id, title, city, country, price_per_adult, currency, cover_image, gallery_images, category, duration, host_id, status")
           .eq("status", "approved")
           .order("created_at", { ascending: false })
           .limit(12),
@@ -214,8 +212,8 @@ const Index = () => {
     queryKey: ["home-story-circles"],
     queryFn: async () => {
       const activeCutoffIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const { data: storiesData, error: storiesError } = await supabase
-        .from("stories")
+      const { data: storiesData, error: storiesError } = await (supabase
+        .from("stories") as any)
         .select("id, user_id, media_url, image_url, created_at")
         .gte("created_at", activeCutoffIso)
         .order("created_at", { ascending: false })
@@ -234,8 +232,8 @@ const Index = () => {
       }
 
       const userIds = Array.from(latestByUser.keys());
-      const { data: authorsData, error: authorsError } = await supabase
-        .from("profiles")
+      const { data: authorsData, error: authorsError } = await (supabase
+        .from("profiles") as any)
         .select("user_id, full_name, nickname, avatar_url")
         .in("user_id", userIds);
 

@@ -110,13 +110,18 @@ export async function uploadFileToCloudinary(
   }
 
   // Determine the resource type based on file type
-  // Use "auto" for images/videos, "raw" for PDFs and other documents
+  // Use "video" for video files, "raw" for PDFs/documents, "image" for images
+  const fileName = file.name.toLowerCase();
+  const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|webm|m4v|avi|3gp|mkv|ogv|ts)$/i.test(fileName);
+  const isPdf = file.type === "application/pdf" || fileName.endsWith('.pdf');
+  const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|avif|heic|heif|bmp|svg)$/i.test(fileName);
+
   let resourceType = "auto";
-  if (file.type === "application/pdf" || file.name.toLowerCase().endsWith('.pdf')) {
+  if (isPdf) {
     resourceType = "raw";
-  } else if (file.type.startsWith("video/")) {
+  } else if (isVideo) {
     resourceType = "video";
-  } else if (file.type.startsWith("image/")) {
+  } else if (isImage) {
     resourceType = "image";
   }
 

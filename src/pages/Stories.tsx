@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Heart, MessageCircle, Plus, Send, Volume2, VolumeX, X } from "lucide-react";
+import { Heart, MessageCircle, Pause, Play, Plus, Send, Video, Volume2, VolumeX, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type StoryRow = {
@@ -62,7 +62,7 @@ const IMAGE_STORY_DURATION_MS = 5500;
 
 const isVideo = (url?: string | null) => {
   if (!url) return false;
-  return /\/video\/upload\//i.test(url) || /\.(mp4|webm|mov|m4v|avi)(\?.*)?$/i.test(url);
+  return /\/video\/upload\//i.test(url) || /\.(mp4|webm|mov|m4v|avi|3gp|mkv|ogv|ts)(\?.*)?$/i.test(url) || url.includes("/video/");
 };
 
 export default function Stories() {
@@ -591,6 +591,7 @@ export default function Stories() {
               {storyGroups.map((group, groupIndex) => {
                 const latestStory = group.stories[group.stories.length - 1];
                 const latestMedia = latestStory.media_url || latestStory.image_url;
+                const hasVideo = group.stories.some((s) => s.media_type === "video" || isVideo(s.media_url || s.image_url));
                 const allSeen = group.stories.every((story) => viewedIds.has(story.id));
                 return (
                   <button
@@ -599,7 +600,7 @@ export default function Stories() {
                     onClick={() => openGroupViewer(groupIndex, 0)}
                     className="flex flex-col items-center gap-2 min-w-[74px]"
                   >
-                    <div className={`p-[2px] rounded-full ${allSeen ? "bg-muted" : "bg-primary"}`}>
+                    <div className={`relative p-[2px] rounded-full ${allSeen ? "bg-muted" : "bg-primary"}`}>
                       <div className="w-16 h-16 rounded-full overflow-hidden bg-background border border-border">
                         {latestMedia ? (
                           isVideo(latestMedia) || latestStory.media_type === "video" ? (
@@ -614,6 +615,11 @@ export default function Stories() {
                           </Avatar>
                         )}
                       </div>
+                      {hasVideo ? (
+                        <span className="absolute -bottom-0.5 -right-0.5 bg-black/80 text-white p-1 rounded-full border border-background shadow">
+                          <Video className="w-2.5 h-2.5 text-primary" />
+                        </span>
+                      ) : null}
                     </div>
                     <span className="text-xs text-foreground truncate max-w-[72px]">{group.authorName}</span>
                   </button>
@@ -626,6 +632,7 @@ export default function Stories() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 {storiesWithAuthor.map((story) => {
                   const mediaUrl = story.media_url || story.image_url;
+                  const storyIsVideo = story.media_type === "video" || isVideo(mediaUrl);
                   const groupIndex = storyGroups.findIndex((group) => group.userId === story.user_id);
                   const storyIndex = storyGroups[groupIndex]?.stories.findIndex((entry) => entry.id === story.id) ?? 0;
                   const likeCount = likeCountByStory.get(story.id) || 0;
@@ -637,17 +644,27 @@ export default function Stories() {
                   return (
                     <Card
                       key={story.id}
-                      className="overflow-hidden cursor-pointer"
+                      className="overflow-hidden cursor-pointer group hover:shadow-md transition-shadow"
                       onClick={() => {
                         if (groupIndex >= 0) openGroupViewer(groupIndex, Math.max(0, storyIndex));
                       }}
                     >
                       {mediaUrl ? (
-                        <div className="aspect-[16/10] bg-muted">
-                          {isVideo(mediaUrl) || story.media_type === "video" ? (
-                            <video src={mediaUrl} className="w-full h-full object-cover" preload="metadata" muted />
+                        <div className="relative aspect-[16/10] bg-muted overflow-hidden">
+                          {storyIsVideo ? (
+                            <>
+                              <video src={mediaUrl} className="w-full h-full object-cover" preload="metadata" muted />
+                              <div className="absolute inset-0 bg-black/20 flex items-center justify-center group-hover:bg-black/30 transition-colors">
+                                <div className="w-12 h-12 rounded-full bg-black/60 text-white flex items-center justify-center backdrop-blur-sm shadow-lg group-hover:scale-110 transition-transform">
+                                  <Play className="w-6 h-6 ml-0.5 fill-white" />
+                                </div>
+                              </div>
+                              <span className="absolute top-3 left-3 bg-black/70 text-white text-xs font-medium px-2 py-0.5 rounded-full backdrop-blur-sm flex items-center gap-1 border border-white/20">
+                                <Video className="w-3 h-3 text-primary" /> Video Story
+                              </span>
+                            </>
                           ) : (
-                            <img src={mediaUrl} alt={story.title} className="w-full h-full object-cover" loading="lazy" />
+                            <img src={mediaUrl} alt={story.title} className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300" loading="lazy" />
                           )}
                         </div>
                       ) : null}
@@ -730,33 +747,32 @@ export default function Stories() {
 
       {viewerOpen && activeStory ? (
         <div
-          className="fixed inset-0 z-50 bg-black"
+          className="fixed inset-0 z-50 bg-black select-none"
           onTouchStart={handleViewerTouchStart}
           onTouchEnd={handleViewerTouchEnd}
         >
-          <div className="absolute inset-0">
+          <div className="absolute inset-0 flex items-center justify-center">
             {activeMedia ? (
               activeStoryIsVideo ? (
                 <video
                   key={activeStory.id}
                   ref={videoRef}
                   src={activeMedia}
-                  className="w-full h-full object-contain"
+                  className="w-full h-full object-contain pointer-events-none"
                   autoPlay
                   playsInline
                   muted={isMuted}
-                  controls
                   onEnded={goToNextStory}
                 />
               ) : (
-                <img src={activeMedia} alt={activeStory.title} className="w-full h-full object-contain" />
+                <img src={activeMedia} alt={activeStory.title} className="w-full h-full object-contain pointer-events-none" />
               )
             ) : (
               <div className="w-full h-full flex items-center justify-center text-white">No media available</div>
             )}
           </div>
 
-          <div className="absolute top-0 left-0 right-0 p-3 sm:p-4 space-y-3 bg-gradient-to-b from-black/70 to-transparent">
+          <div className="absolute top-0 left-0 right-0 p-3 sm:p-4 space-y-3 bg-gradient-to-b from-black/70 to-transparent z-10">
             <div className="flex items-center gap-1.5">
               {activeGroup?.stories.map((story, index) => {
                 const isDone = index < activeStoryIndex;
@@ -791,16 +807,38 @@ export default function Stories() {
 
               <div className="flex items-center gap-2">
                 {activeStoryIsVideo ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="text-white hover:bg-white/20"
-                    onClick={() => setIsMuted((prev) => !prev)}
-                    aria-label={isMuted ? "Unmute story video" : "Mute story video"}
-                  >
-                    {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-                  </Button>
+                  <>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="text-white hover:bg-white/20"
+                      onClick={() => {
+                        if (videoRef.current) {
+                          if (videoRef.current.paused) {
+                            void videoRef.current.play();
+                            setIsHolding(false);
+                          } else {
+                            videoRef.current.pause();
+                            setIsHolding(true);
+                          }
+                        }
+                      }}
+                      aria-label={isHolding ? "Play story video" : "Pause story video"}
+                    >
+                      {isHolding ? <Play className="w-5 h-5 fill-white" /> : <Pause className="w-5 h-5" />}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="text-white hover:bg-white/20"
+                      onClick={() => setIsMuted((prev) => !prev)}
+                      aria-label={isMuted ? "Unmute story video" : "Mute story video"}
+                    >
+                      {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                    </Button>
+                  </>
                 ) : null}
 
                 <Button

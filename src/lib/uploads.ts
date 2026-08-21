@@ -60,10 +60,25 @@ export async function uploadFile(
 
     // Fallback to Supabase Storage (public bucket).
     const safeName = sanitizeFilename(fileToUpload.name);
-    const path = `${opts.folder}/${randomId()}-${safeName}`.replaceAll("//", "/");
+    const path = `${opts.folder}/${randomId()}-${safeName}`.replace(/\/{2,}/g, "/");
+    
+    // Determine content type for storage
+    let contentType = fileToUpload.type;
+    if (!contentType || contentType === "application/octet-stream") {
+      const ext = safeName.split('.').pop()?.toLowerCase();
+      if (ext === 'mp4') contentType = 'video/mp4';
+      else if (ext === 'webm') contentType = 'video/webm';
+      else if (ext === 'mov') contentType = 'video/quicktime';
+      else if (ext === 'm4v') contentType = 'video/x-m4v';
+      else if (ext === 'jpg' || ext === 'jpeg') contentType = 'image/jpeg';
+      else if (ext === 'png') contentType = 'image/png';
+      else if (ext === 'webp') contentType = 'image/webp';
+    }
+
     const { error } = await supabase.storage.from("uploads").upload(path, fileToUpload, {
       cacheControl: "3600",
       upsert: false,
+      contentType: contentType || undefined,
     });
     if (error) throw error;
 

@@ -14,7 +14,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Upload, Image as ImageIcon, Video } from "lucide-react";
 import { uiErrorMessage } from "@/lib/ui-errors";
 
-const isVideoUrl = (url: string) => /\/video\/upload\//i.test(url) || /\.(mp4|webm|mov|m4v|avi)(\?.*)?$/i.test(url);
+const isVideoUrl = (url: string) =>
+  /\/video\/upload\//i.test(url) ||
+  /\.(mp4|webm|mov|m4v|avi|3gp|mkv|ogv|ts)(\?.*)?$/i.test(url) ||
+  url.includes("/video/");
 
 export default function CreateStory() {
   const { user, isLoading } = useAuth();
@@ -158,7 +161,7 @@ export default function CreateStory() {
       localStorage.removeItem(getStorageKey());
 
       toast({ title: "Story published", description: "Your story has been posted successfully." });
-      navigate("/dashboard");
+      navigate("/stories");
     } catch (error) {
       toast({
         variant: "destructive",
@@ -178,7 +181,7 @@ export default function CreateStory() {
         <Card className="p-6 space-y-6">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Add Story</h1>
-            <p className="text-muted-foreground">Share your travel experience with a title, description, and optional media.</p>
+            <p className="text-muted-foreground">Share your travel moment with a title, description, and optional photo or video.</p>
           </div>
 
           <div className="grid grid-cols-1 gap-4">
@@ -214,36 +217,87 @@ export default function CreateStory() {
             </div>
 
             <div>
-              <Label>Media (optional)</Label>
-              <div className="mt-2 flex items-center gap-3">
-                <CloudinaryUploadDialog
-                  title="Upload story media"
-                  folder="merry360/stories"
-                  accept="image/*,video/*"
-                  multiple={false}
-                  maxFiles={1}
-                  autoStart={true}
-                  value={mediaUrls}
-                  onChange={setMediaUrls}
-                  trigger={
-                    <Button type="button" variant="outline" className="gap-2">
-                      <Upload className="w-4 h-4" />
-                      Upload Media
+              <Label>Media (optional photo or video)</Label>
+              {selectedMedia ? (
+                <div className="mt-3 space-y-3">
+                  <div className="relative rounded-2xl overflow-hidden border border-border bg-black/90 max-h-96 flex items-center justify-center">
+                    {mediaType === "video" ? (
+                      <video
+                        src={selectedMedia}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        className="max-h-96 w-full object-contain"
+                      />
+                    ) : (
+                      <img
+                        src={selectedMedia}
+                        alt="Story preview"
+                        className="max-h-96 w-full object-contain"
+                      />
+                    )}
+                    <span className="absolute top-3 left-3 bg-black/75 text-white text-xs font-semibold px-2.5 py-1 rounded-full backdrop-blur-sm flex items-center gap-1.5 border border-white/20">
+                      {mediaType === "video" ? <Video className="w-3.5 h-3.5 text-primary" /> : <ImageIcon className="w-3.5 h-3.5 text-primary" />}
+                      {mediaType === "video" ? "Video Story" : "Photo Story"}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <CloudinaryUploadDialog
+                      title="Replace story media"
+                      folder="merry360/stories"
+                      accept="image/*,video/*"
+                      multiple={false}
+                      maxFiles={1}
+                      autoStart={true}
+                      value={mediaUrls}
+                      onChange={setMediaUrls}
+                      trigger={
+                        <Button type="button" variant="outline" size="sm" className="gap-2">
+                          <Upload className="w-3.5 h-3.5" />
+                          Change Media
+                        </Button>
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => setMediaUrls([])}
+                    >
+                      Remove
                     </Button>
-                  }
-                />
-                {selectedMedia ? (
-                  <span className="text-sm text-muted-foreground inline-flex items-center gap-1">
-                    {mediaType === "video" ? <Video className="w-4 h-4" /> : <ImageIcon className="w-4 h-4" />}
-                    Media selected
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-2 flex items-center gap-3">
+                  <CloudinaryUploadDialog
+                    title="Upload story photo or video"
+                    folder="merry360/stories"
+                    accept="image/*,video/*"
+                    multiple={false}
+                    maxFiles={1}
+                    autoStart={true}
+                    value={mediaUrls}
+                    onChange={setMediaUrls}
+                    trigger={
+                      <Button type="button" variant="outline" className="gap-2">
+                        <Upload className="w-4 h-4" />
+                        Upload Photo or Video
+                      </Button>
+                    }
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Upload photos (up to 20MB) or short videos (up to 100MB).
                   </span>
-                ) : null}
-              </div>
+                </div>
+              )}
             </div>
           </div>
 
           <div className="flex items-center justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => navigate("/dashboard")}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => navigate("/stories")}>Cancel</Button>
             <Button type="button" onClick={submitStory} disabled={saving}>
               {saving ? "Publishing..." : "Publish Story"}
             </Button>

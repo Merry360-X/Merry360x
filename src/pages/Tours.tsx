@@ -26,25 +26,6 @@ const ALL_CATEGORY_VALUE = "All";
 const ANY_DURATION_VALUE = "Any Duration";
 const ALL_COUNTRIES_VALUE = "All Countries";
 
-const DEFAULT_COUNTRIES = [
-  "Rwanda",
-  "Uganda",
-  "Kenya",
-  "Tanzania",
-  "Burundi",
-  "DR Congo",
-  "Ethiopia",
-  "South Africa",
-  "Zambia",
-  "Zimbabwe",
-  "Ghana",
-  "Nigeria",
-  "Cameroon",
-  "Senegal",
-  "Egypt",
-  "Morocco",
-];
-
 const categories: Array<{ value: string; labelKey: string }> = [
   { value: "All", labelKey: "tours.categories.all" },
   { value: "Nature", labelKey: "tours.categories.nature" },
@@ -74,6 +55,7 @@ type TourRow = Pick<
   source?: "tours" | "tour_packages"; // Track which table this item came from
   host_id?: string;
   business_name?: string | null;
+  country?: string | null;
 };
 
 const durationToFilter = (duration: string) => {
@@ -94,48 +76,22 @@ const fetchTours = async ({
   category: string;
   duration: string;
 }): Promise<TourRow[]> => {
-  // Fetch from both tours and tour_packages tables
-  let toursQuery: any = supabase
-    .from("tours")
+  const trimmed = q.trim();
+  const selectedCountry = country && country !== ALL_COUNTRIES_VALUE ? country.trim() : null;
+
+  // Fetch from tours table
+  const toursQuery = (supabase.from("tours") as any)
     .select(
       "id, title, description, category, difficulty, duration_days, price_per_person, currency, images, rating, review_count, location, created_by, pricing_tiers"
     )
     .or("is_published.eq.true,is_published.is.null")
     .order("created_at", { ascending: false });
 
-  const trimmed = q.trim();
-  if (trimmed) {
-    toursQuery = toursQuery.or(`title.ilike.%${trimmed}%,location.ilike.%${trimmed}%`);
-  }
-
-  const selectedCountry = country && country !== ALL_COUNTRIES_VALUE ? country.trim() : null;
-  if (selectedCountry) {
-    toursQuery = toursQuery.ilike("location", `%${selectedCountry}%`);
-  }
-
-  if (category && category !== "All") {
-    toursQuery = toursQuery.eq("category", category);
-  }
-
-  const dur = durationToFilter(duration);
-  if (dur?.kind === "eq") toursQuery = toursQuery.eq("duration_days", dur.value);
-  if (dur?.kind === "lte") toursQuery = toursQuery.lte("duration_days", dur.value);
-  if (dur?.kind === "gte") toursQuery = toursQuery.gte("duration_days", dur.value);
-
-  // Fetch tour_packages
-  let packagesQuery: any = (supabase
-    .from("tour_packages") as any)
+  // Fetch from tour_packages table
+  const packagesQuery = (supabase.from("tour_packages") as any)
     .select("*")
-    .eq("status", "approved")
+    .or("status.eq.approved,status.eq.published,is_approved.eq.true,status.is.null")
     .order("created_at", { ascending: false });
-
-  if (trimmed) {
-    packagesQuery = packagesQuery.or(`title.ilike.%${trimmed}%,city.ilike.%${trimmed}%,country.ilike.%${trimmed}%`);
-  }
-
-  if (selectedCountry) {
-    packagesQuery = packagesQuery.or(`country.ilike.%${selectedCountry}%,city.ilike.%${selectedCountry}%`);
-  }
 
   const [toursRes, packagesRes] = await Promise.all([
     toursQuery,
@@ -144,17 +100,21 @@ const fetchTours = async ({
 
   if (toursRes.error) throw toursRes.error;
 
-  const tours = ((toursRes.data as any[]) ?? []).map(t => ({
-    ...t,
-    source: "tours" as const,
-    host_id: t.created_by,
-  })) as TourRow[];
+  const rawTours = ((toursRes.data as any[]) ?? []).map((t) => {
+    const locationParts = String(t.location || "").split(",").map((p) => p.trim()).filter(Boolean);
+    const derivedCountry = locationParts.length > 1 ? locationParts[locationParts.length - 1] : locationParts[0] || null;
+    return {
+      ...t,
+      source: "tours" as const,
+      host_id: t.created_by,
+      country: derivedCountry,
+    };
+  }) as TourRow[];
 
-  // Convert tour_packages to TourRow format
-  let allTours = tours;
+  let packagesAsTours: TourRow[] = [];
   const packageList = (packagesRes.data as any[]) ?? [];
   if (packageList.length > 0 && !packagesRes.error) {
-    const packagesAsTours: TourRow[] = packageList.map(pkg => ({
+    packagesAsTours = packageList.map((pkg) => ({
       id: pkg.id,
       title: pkg.title,
       description: pkg.description,
@@ -170,13 +130,67 @@ const fetchTours = async ({
       pricing_tiers: pkg.pricing_tiers,
       source: "tour_packages" as const,
       host_id: pkg.host_id,
+      country: pkg.country || null,
     }));
+  }
 
-    allTours = [...tours, ...packagesAsTours];
+  let allTours = [...rawTours, ...packagesAsTours];
+
+  // 1. Strict filter by Country field (from tour_packages.country or tours.location)
+  if (selectedCountry) {
+    const targetCountryLower = selectedCountry.toLowerCase();
+    allTours = allTours.filter((item) => {
+      if (item.country && item.country.trim().toLowerCase() === targetCountryLower) {
+        return true;
+      }
+      if (item.location) {
+        const parts = item.location.split(",").map((p) => p.trim().toLowerCase());
+        if (parts.includes(targetCountryLower)) {
+          return true;
+        }
+        if (parts[parts.length - 1] === targetCountryLower) {
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+
+  // 2. Filter by search query q
+  if (trimmed) {
+    const qLower = trimmed.toLowerCase();
+    allTours = allTours.filter((item) => {
+      const loc = (item.location || "").toLowerCase();
+      const title = (item.title || "").toLowerCase();
+      const desc = (item.description || "").toLowerCase();
+      const cat = (item.category || "").toLowerCase();
+      return loc.includes(qLower) || title.includes(qLower) || desc.includes(qLower) || cat.includes(qLower);
+    });
+  }
+
+  // 3. Filter by Category
+  if (category && category !== ALL_CATEGORY_VALUE) {
+    const catLower = category.toLowerCase();
+    allTours = allTours.filter((item) => {
+      if (!item.category) return false;
+      return item.category.toLowerCase() === catLower;
+    });
+  }
+
+  // 4. Filter by Duration
+  const dur = durationToFilter(duration);
+  if (dur) {
+    allTours = allTours.filter((item) => {
+      const days = Number(item.duration_days || 1);
+      if (dur.kind === "lte") return days <= dur.value;
+      if (dur.kind === "eq") return days === dur.value;
+      if (dur.kind === "gte") return days >= dur.value;
+      return true;
+    });
   }
 
   // Fetch business names for all host IDs
-  const hostIds = [...new Set(allTours.map(t => t.host_id).filter(Boolean))] as string[];
+  const hostIds = [...new Set(allTours.map((t) => t.host_id).filter(Boolean))] as string[];
   if (hostIds.length > 0) {
     const { data: hostApps } = await (supabase
       .from("host_applications") as any)
@@ -185,7 +199,7 @@ const fetchTours = async ({
 
     if (hostApps) {
       const businessNameMap = new Map((hostApps as any[]).map((app: any) => [app.user_id, app.business_name]));
-      allTours.forEach(t => {
+      allTours.forEach((t) => {
         if (t.host_id) {
           t.business_name = businessNameMap.get(t.host_id) || null;
         }
@@ -226,14 +240,34 @@ const Tours = () => {
     setActiveCategory(searchParams.get("category") ?? ALL_CATEGORY_VALUE);
   }, [searchParams]);
 
-  const runSearch = () => {
+  const updateFilters = (next: { q?: string; country?: string; duration?: string; category?: string }) => {
     const params = new URLSearchParams();
-    if (query.trim()) params.set("q", query.trim());
-    if (country && country !== ALL_COUNTRIES_VALUE) params.set("country", country);
-    if (duration && duration !== ANY_DURATION_VALUE) params.set("duration", duration);
-    if (activeCategory && activeCategory !== ALL_CATEGORY_VALUE) params.set("category", activeCategory);
+    const nextQ = next.q !== undefined ? next.q : query;
+    const nextCountry = next.country !== undefined ? next.country : country;
+    const nextDuration = next.duration !== undefined ? next.duration : duration;
+    const nextCategory = next.category !== undefined ? next.category : activeCategory;
+
+    if (nextQ.trim()) params.set("q", nextQ.trim());
+    if (nextCountry && nextCountry !== ALL_COUNTRIES_VALUE) params.set("country", nextCountry);
+    if (nextDuration && nextDuration !== ANY_DURATION_VALUE) params.set("duration", nextDuration);
+    if (nextCategory && nextCategory !== ALL_CATEGORY_VALUE) params.set("category", nextCategory);
+
     const qs = params.toString();
     navigate(qs ? `/tours?${qs}` : "/tours");
+  };
+
+  const runSearch = () => {
+    updateFilters({ q: query, country, duration, category: activeCategory });
+  };
+
+  const handleCountryChange = (selectedVal: string) => {
+    setCountry(selectedVal);
+    updateFilters({ country: selectedVal });
+  };
+
+  const handleDurationChange = (selectedVal: string) => {
+    setDuration(selectedVal);
+    updateFilters({ duration: selectedVal });
   };
 
   const requestNearbyRecommendations = async (options?: { silent?: boolean }) => {
@@ -309,19 +343,40 @@ const Tours = () => {
     refetchOnWindowFocus: true,
   });
 
-  const availableCountries = useMemo(() => {
-    const set = new Set<string>(DEFAULT_COUNTRIES);
-    tours.forEach((tour) => {
-      if (tour.location) {
-        const parts = tour.location.split(",").map((p) => p.trim());
-        const lastPart = parts[parts.length - 1];
-        if (lastPart && lastPart.length > 2 && !/^\d+$/.test(lastPart)) {
-          set.add(lastPart);
+  const { data: availableCountries = [] } = useQuery({
+    queryKey: ["tour-dynamic-countries"],
+    queryFn: async () => {
+      const [toursRes, packagesRes] = await Promise.all([
+        (supabase.from("tours") as any)
+          .select("location")
+          .or("is_published.eq.true,is_published.is.null"),
+        (supabase.from("tour_packages") as any)
+          .select("country, city")
+          .or("status.eq.approved,status.eq.published,is_approved.eq.true,status.is.null"),
+      ]);
+
+      const countrySet = new Set<string>();
+
+      (packagesRes.data ?? []).forEach((pkg: any) => {
+        const c = String(pkg.country || "").trim();
+        if (c && c.length > 1) countrySet.add(c);
+      });
+
+      (toursRes.data ?? []).forEach((t: any) => {
+        if (t.location) {
+          const parts = String(t.location).split(",").map((p) => p.trim()).filter(Boolean);
+          const lastPart = parts[parts.length - 1];
+          if (lastPart && lastPart.length > 1 && !/^\d+$/.test(lastPart)) {
+            countrySet.add(lastPart);
+          }
         }
-      }
-    });
-    return Array.from(set);
-  }, [tours]);
+      });
+
+      return Array.from(countrySet).sort((a, b) => a.localeCompare(b));
+    },
+    staleTime: 1000 * 60 * 5,
+    refetchOnMount: true,
+  });
 
   const rankedTours = useMemo(() => {
     if (!nearbyRegion) return tours;
@@ -386,7 +441,7 @@ const Tours = () => {
             <select
               className="h-10 w-full sm:w-auto rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
               value={country}
-              onChange={(e) => setCountry(e.target.value)}
+              onChange={(e) => handleCountryChange(e.target.value)}
               aria-label={t("tours.country.label") || "Country"}
             >
               <option value={ALL_COUNTRIES_VALUE}>{t("tours.country.all") || "All Countries"}</option>
@@ -401,7 +456,7 @@ const Tours = () => {
             <select
               className="h-10 w-full sm:w-auto rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
               value={duration}
-              onChange={(e) => setDuration(e.target.value)}
+              onChange={(e) => handleDurationChange(e.target.value)}
               aria-label={t("tours.duration.any") || "Duration"}
             >
               <option value={ANY_DURATION_VALUE}>{t("tours.duration.any")}</option>
@@ -426,13 +481,7 @@ const Tours = () => {
               key={category.value}
               onClick={() => {
                 setActiveCategory(category.value);
-                const params = new URLSearchParams();
-                if (query.trim()) params.set("q", query.trim());
-                if (country && country !== ALL_COUNTRIES_VALUE) params.set("country", country);
-                if (duration && duration !== ANY_DURATION_VALUE) params.set("duration", duration);
-                if (category.value && category.value !== ALL_CATEGORY_VALUE) params.set("category", category.value);
-                const qs = params.toString();
-                navigate(qs ? `/tours?${qs}` : "/tours");
+                updateFilters({ category: category.value });
               }}
               className={`shrink-0 px-4 sm:px-5 py-2 rounded-full text-sm font-medium transition-colors ${activeCategory === category.value
                   ? "bg-primary text-primary-foreground"
