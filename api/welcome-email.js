@@ -118,7 +118,7 @@ export default async function handler(req, res) {
 
       const founderRes = await sendBrevoEmail({
         to: recipient,
-        subject: `A personal welcome from our founder 🌍`,
+        subject: `A Personal Note From Our Founder ✨`,
         htmlContent: founderHtml,
         senderName: "Founder @ Merry 360",
         senderEmail: DEFAULT_FROM_EMAIL,
