@@ -386,7 +386,7 @@ function generatePendingOrderGuestHtml(payload) {
     title: "Your order is being processed",
     subtitle: "We received your order and our team is processing payment confirmation.",
     bodyHtml: `
-      <p style="margin:0 0 12px;color:#374151;font-size:14px;">Hi ${escapeHtml(payload.guestName || "Guest")}, thanks for booking with Merry 360 Experiences.</p>
+      <p style="margin:0 0 12px;color:#374151;font-size:14px;">Hi ${escapeHtml(payload.guestName || "Guest")}, thanks for booking with Merry360X.</p>
       ${details}
       <p style="margin:12px 0 0;color:#4b5563;font-size:13px;">You will receive another email/SMS once payment is confirmed.</p>
     `,
@@ -456,7 +456,7 @@ async function sendBrevoEmail({ to, subject, htmlContent, tags = [] }) {
     },
     body: JSON.stringify(
       buildBrevoSmtpPayload({
-        senderName: "Merry 360 Experiences",
+        senderName: "Merry360X",
         senderEmail: "support@merry360x.com",
         to: validRecipients,
         subject,
@@ -675,7 +675,7 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify(
           buildBrevoSmtpPayload({
-            senderName: "Merry 360 Experiences",
+            senderName: "Merry360X",
             senderEmail: "support@merry360x.com",
             to: [{ email: hostRecipient.email, name: hostRecipient.source === "preview" ? "Template Preview" : resolved.hostName }],
             subject: `${previewTo ? "[Preview] " : ""}Payment Update: ${paymentLabel(effectivePaymentStatus)} • ${resolved.itemTitle}`,
@@ -797,7 +797,7 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify(
           buildBrevoSmtpPayload({
-            senderName: "Merry 360 Experiences",
+            senderName: "Merry360X",
             senderEmail: "support@merry360x.com",
             to: [{ email: recipient.email, name: recipient.source === "preview" ? "Template Preview" : (resolvedGuestName || "Guest") }],
             subject: `${previewTo ? "[Preview] " : ""}Refund Update: ${normalized.label}${resolvedBookingId ? ` • ${resolvedBookingId.slice(0, 8).toUpperCase()}` : ""}`,
@@ -855,7 +855,7 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify(
           buildBrevoSmtpPayload({
-            senderName: "Merry 360 Experiences",
+            senderName: "Merry360X",
             senderEmail: "support@merry360x.com",
             to: [
               {
@@ -954,7 +954,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify(
         buildBrevoSmtpPayload({
-          senderName: "Merry 360 Experiences",
+          senderName: "Merry360X",
           senderEmail: "support@merry360x.com",
           to: [
             {

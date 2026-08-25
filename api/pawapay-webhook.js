@@ -91,7 +91,7 @@ async function sendPostBookingGuestPaidEmail(supabase, charge, checkout) {
     },
     body: JSON.stringify(
       buildBrevoSmtpPayload({
-        senderName: "Merry 360 Experiences",
+        senderName: "Merry360X",
         senderEmail: "support@merry360x.com",
         to: [{ email: recipient.email, name: guestName }],
         subject: `Payment received - ${amountLabel}`,
@@ -158,7 +158,7 @@ async function sendPostBookingHostPaidEmail(supabase, charge, checkout) {
     },
     body: JSON.stringify(
       buildBrevoSmtpPayload({
-        senderName: "Merry 360 Experiences",
+        senderName: "Merry360X",
         senderEmail: "support@merry360x.com",
         to: [{ email: recipient.email, name: String(hostProfile?.full_name || "Host") }],
         subject: `Post-booking payment received - ${amountLabel}`,
@@ -214,7 +214,7 @@ async function sendPostBookingAdminPaidEmail(supabase, charge) {
       },
       body: JSON.stringify(
         buildBrevoSmtpPayload({
-          senderName: "Merry 360 Experiences",
+          senderName: "Merry360X",
           senderEmail: "support@merry360x.com",
           to: [{ email: recipient.email, name: String(admin?.full_name || "Admin") }],
           subject: `Post-booking payment completed - ${amountLabel}`,
@@ -411,6 +411,28 @@ function generateConfirmationEmail(checkout, items, bookingIds, reviewTokens) {
   const totalAmount = formatMoney(checkout.total_amount, checkout.currency);
   const receiptNumber = `MRY-${Date.now().toString(36).toUpperCase()}`;
   const isMultiItem = items && items.length > 1;
+
+  const bookingDate = checkout.created_at ? new Date(checkout.created_at) : new Date();
+  const bookingDateFormatted = bookingDate.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  const firstItem = items && items[0];
+  const listingName = isMultiItem
+    ? items.map((i) => i.title || i.name || "Item").filter(Boolean).join(", ") || "Multiple Bookings"
+    : (firstItem?.title || firstItem?.name || checkout.metadata?.item_name || checkout.title || "Experience");
+
+  const checkInDate = checkout.metadata?.booking_details?.check_in || firstItem?.metadata?.check_in || firstItem?.check_in || checkout.metadata?.check_in;
+  const checkInTime = checkout.metadata?.booking_details?.check_in_time || firstItem?.metadata?.check_in_time || firstItem?.check_in_time || checkout.metadata?.booking_details?.pickup_time || firstItem?.metadata?.pickup_time || checkout.metadata?.check_in_time;
+  const checkInFormatted = formatDateTime(checkInDate, checkInTime);
+
+  const checkOutDate = checkout.metadata?.booking_details?.check_out || firstItem?.metadata?.check_out || firstItem?.check_out || checkout.metadata?.check_out;
+  const checkOutTime = checkout.metadata?.booking_details?.check_out_time || firstItem?.metadata?.check_out_time || firstItem?.check_out_time || checkout.metadata?.booking_details?.dropoff_time || firstItem?.metadata?.dropoff_time || checkout.metadata?.check_out_time;
+  const checkOutFormatted = formatDateTime(checkOutDate, checkOutTime);
+
   // Use token-based review URL (no login required)
   const singleToken = Array.isArray(reviewTokens) && reviewTokens.length === 1 ? reviewTokens[0]?.review_token : null;
   const reviewUrl = singleToken
@@ -431,16 +453,32 @@ function generateConfirmationEmail(checkout, items, bookingIds, reviewTokens) {
     .map((star) => `<a href="${reviewUrl}${reviewUrl.includes("?") ? "&" : "?"}rating=${star}" style="display:inline-block;text-decoration:none;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;margin-right:6px;color:#111827;font-size:13px;">${"★".repeat(star)}</a>`)
     .join("");
 
-  const details = keyValueRows([
-    { label: "Receipt", value: escapeHtml(receiptNumber) },
+  const detailsRows = [
+    { label: "Confirmation Code", value: `<span style="font-family:monospace;font-weight:700;">${escapeHtml(receiptNumber)}</span>` },
     { label: "Guest", value: escapeHtml(guestName) },
-    { label: "Amount Paid", value: escapeHtml(totalAmount) },
-    { label: "Status", value: "Paid" },
-    { label: "Bookings", value: escapeHtml(String(Array.isArray(bookingIds) ? bookingIds.length : 1)) },
-  ]);
+    { label: "Listing Name", value: `<strong>${escapeHtml(listingName)}</strong>` },
+    { label: "Booking Date", value: escapeHtml(bookingDateFormatted) },
+  ];
+
+  if (checkInFormatted) {
+    detailsRows.push({ label: "Check-in / Start", value: escapeHtml(checkInFormatted) });
+  }
+
+  if (checkOutFormatted) {
+    detailsRows.push({ label: "Check-out / End", value: escapeHtml(checkOutFormatted) });
+  }
+
+  detailsRows.push({ label: "Amount Paid", value: `<strong>${escapeHtml(totalAmount)}</strong>` });
+  detailsRows.push({ label: "Status", value: `<span style="display:inline-block;background:#dcfce7;color:#166534;padding:2px 8px;border-radius:999px;font-weight:600;font-size:12px;">Confirmed</span>` });
+
+  if (isMultiItem) {
+    detailsRows.push({ label: "Bookings", value: escapeHtml(String(Array.isArray(bookingIds) ? bookingIds.length : items.length)) });
+  }
+
+  const details = keyValueRows(detailsRows);
 
   return renderMinimalEmail({
-    eyebrow: "Payment Receipt",
+    eyebrow: "Booking Confirmation",
     title: "Booking confirmed",
     subtitle: "Your payment was successful and your booking is complete.",
     bodyHtml: `${itemsHtml}${details}<div style="margin-top:14px;"><p style="margin:0 0 8px;color:#6b7280;font-size:12px;">Rate your experience:</p>${stars}</div>`,
@@ -586,7 +624,7 @@ async function sendConfirmationEmail(checkout, items, bookingIds, reviewTokens) 
       },
       body: JSON.stringify(
         buildBrevoSmtpPayload({
-          senderName: "Merry 360 Experiences",
+          senderName: "Merry360X",
           senderEmail: "support@merry360x.com",
           to: [
             {
@@ -765,7 +803,7 @@ async function sendHostNotification(supabase, booking, item) {
       },
       body: JSON.stringify(
         buildBrevoSmtpPayload({
-          senderName: "Merry 360 Experiences",
+          senderName: "Merry360X",
           senderEmail: "support@merry360x.com",
           to: [
             {

@@ -7,7 +7,7 @@ import {
 } from "../lib/email-template-kit.js";
 
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
-const DEFAULT_FROM_NAME = "Merry 360 Experiences";
+const DEFAULT_FROM_NAME = "Merry360X";
 const DEFAULT_FROM_EMAIL = "support@merry360x.com";
 
 function json(res, status, body) {

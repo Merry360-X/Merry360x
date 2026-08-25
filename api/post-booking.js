@@ -352,7 +352,7 @@ async function sendEmailNotification({ toEmail, toName, subject, html, tags = []
         "content-type": "application/json",
       },
       body: JSON.stringify(buildBrevoSmtpPayload({
-        senderName: "Merry 360 Experiences",
+        senderName: "Merry360X",
         senderEmail: "support@merry360x.com",
         to: [{ email: recipient.email, name: toName || "Guest" }],
         subject,

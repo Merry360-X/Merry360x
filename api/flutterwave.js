@@ -60,6 +60,21 @@ function formatDate(dateStr) {
   }
 }
 
+function formatDateTime(dateStr, timeStr) {
+  if (!dateStr) return null;
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return String(dateStr);
+    const formatted = date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", weekday: "short" });
+    if (timeStr && String(timeStr).trim()) {
+      return `${formatted} at ${String(timeStr).trim()}`;
+    }
+    return formatted;
+  } catch {
+    return String(dateStr);
+  }
+}
+
 async function sendFlwGuestEmail(checkout, items, bookingIds, reviewTokens) {
   if (!BREVO_API_KEY) return;
   const recipientCheck = validateRecipientEmail(checkout.email);
@@ -68,27 +83,61 @@ async function sendFlwGuestEmail(checkout, items, bookingIds, reviewTokens) {
   const guestName = checkout.name || "Guest";
   const totalAmount = formatMoney(checkout.total_amount, checkout.currency || "USD");
   const receiptNumber = `MRY-${Date.now().toString(36).toUpperCase()}`;
+
+  const bookingDate = checkout.created_at ? new Date(checkout.created_at) : new Date();
+  const bookingDateFormatted = formatDate(bookingDate);
+
+  const firstItem = items && items[0];
+  const isMultiItem = items && items.length > 1;
+  const listingName = isMultiItem
+    ? items.map((i) => i.title || i.name || "Item").filter(Boolean).join(", ") || "Multiple Bookings"
+    : (firstItem?.title || firstItem?.name || checkout.metadata?.item_name || checkout.title || "Experience");
+
+  const checkInDate = checkout.metadata?.booking_details?.check_in || firstItem?.metadata?.check_in || firstItem?.check_in || checkout.metadata?.check_in;
+  const checkInTime = checkout.metadata?.booking_details?.check_in_time || firstItem?.metadata?.check_in_time || firstItem?.check_in_time || checkout.metadata?.booking_details?.pickup_time || firstItem?.metadata?.pickup_time || checkout.metadata?.check_in_time;
+  const checkInFormatted = formatDateTime(checkInDate, checkInTime);
+
+  const checkOutDate = checkout.metadata?.booking_details?.check_out || firstItem?.metadata?.check_out || firstItem?.check_out || checkout.metadata?.check_out;
+  const checkOutTime = checkout.metadata?.booking_details?.check_out_time || firstItem?.metadata?.check_out_time || firstItem?.check_out_time || checkout.metadata?.booking_details?.dropoff_time || firstItem?.metadata?.dropoff_time || checkout.metadata?.check_out_time;
+  const checkOutFormatted = formatDateTime(checkOutDate, checkOutTime);
+
   const singleToken = Array.isArray(reviewTokens) && reviewTokens.length === 1 ? reviewTokens[0]?.review_token : null;
   const reviewUrl = singleToken ? `https://merry360x.com/review/${singleToken}` : `https://merry360x.com/my-bookings`;
   const stars = [1, 2, 3, 4, 5]
     .map((s) => `<a href="${reviewUrl}${reviewUrl.includes("?") ? "&" : "?"}rating=${s}" style="display:inline-block;text-decoration:none;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;margin-right:6px;color:#111827;font-size:13px;">${"★".repeat(s)}</a>`)
     .join("");
-  const itemsHtml = items.length > 1
+  const itemsHtml = isMultiItem
     ? `<div style="margin-bottom:12px;">${items.map((it) => `<p style="margin:0 0 6px;color:#374151;font-size:14px;">• ${escapeHtml(it.title || it.name || "Item")} — ${escapeHtml(formatMoney(it.calculated_price || it.price, it.calculated_price_currency || it.currency || "USD"))}</p>`).join("")}</div>`
     : "";
 
+  const detailsRows = [
+    { label: "Confirmation Code", value: `<span style="font-family:monospace;font-weight:700;">${escapeHtml(receiptNumber)}</span>` },
+    { label: "Guest", value: escapeHtml(guestName) },
+    { label: "Listing Name", value: `<strong>${escapeHtml(listingName)}</strong>` },
+    { label: "Booking Date", value: escapeHtml(bookingDateFormatted) },
+  ];
+
+  if (checkInFormatted) {
+    detailsRows.push({ label: "Check-in / Start", value: escapeHtml(checkInFormatted) });
+  }
+
+  if (checkOutFormatted) {
+    detailsRows.push({ label: "Check-out / End", value: escapeHtml(checkOutFormatted) });
+  }
+
+  detailsRows.push({ label: "Amount Paid", value: `<strong>${escapeHtml(totalAmount)}</strong>` });
+  detailsRows.push({ label: "Payment", value: "Card (Flutterwave)" });
+  detailsRows.push({ label: "Status", value: `<span style="display:inline-block;background:#dcfce7;color:#166534;padding:2px 8px;border-radius:999px;font-weight:600;font-size:12px;">Confirmed</span>` });
+
+  if (isMultiItem) {
+    detailsRows.push({ label: "Bookings", value: escapeHtml(String(bookingIds.length)) });
+  }
+
   const html = renderMinimalEmail({
-    eyebrow: "Payment Receipt",
+    eyebrow: "Booking Confirmation",
     title: "Booking confirmed",
     subtitle: "Your card payment was successful and your booking is complete.",
-    bodyHtml: `${itemsHtml}${keyValueRows([
-      { label: "Receipt", value: escapeHtml(receiptNumber) },
-      { label: "Guest", value: escapeHtml(guestName) },
-      { label: "Amount Paid", value: escapeHtml(totalAmount) },
-      { label: "Payment", value: "Card (Flutterwave)" },
-      { label: "Status", value: "Paid" },
-      { label: "Bookings", value: escapeHtml(String(bookingIds.length)) },
-    ])}<div style="margin-top:14px;"><p style="margin:0 0 8px;color:#6b7280;font-size:12px;">Rate your experience:</p>${stars}</div>`,
+    bodyHtml: `${itemsHtml}${keyValueRows(detailsRows)}<div style="margin-top:14px;"><p style="margin:0 0 8px;color:#6b7280;font-size:12px;">Rate your experience:</p>${stars}</div>`,
     ctaText: "View My Bookings",
     ctaUrl: "https://merry360x.com/my-bookings",
   });
@@ -98,7 +147,7 @@ async function sendFlwGuestEmail(checkout, items, bookingIds, reviewTokens) {
       method: "POST",
       headers: { accept: "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json" },
       body: JSON.stringify(buildBrevoSmtpPayload({
-        senderName: "Merry 360 Experiences",
+        senderName: "Merry360X",
         senderEmail: "support@merry360x.com",
         to: [{ email: recipientCheck.email, name: guestName }],
         subject: `Booking Confirmed - ${receiptNumber}`,
@@ -149,7 +198,7 @@ async function sendFlwHostNotification(supabase, booking, item) {
       method: "POST",
       headers: { accept: "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json" },
       body: JSON.stringify(buildBrevoSmtpPayload({
-        senderName: "Merry 360 Experiences",
+        senderName: "Merry360X",
         senderEmail: "support@merry360x.com",
         to: [{ email: hostCheck.email, name: profile.full_name || "Host" }],
         subject: `New Booking: ${itemTitle} - ${bookingRef}`,
@@ -459,7 +508,7 @@ async function sendPostBookingGuestPaidEmail(supabase, charge, checkoutData) {
     },
     body: JSON.stringify(
       buildBrevoSmtpPayload({
-        senderName: "Merry 360 Experiences",
+        senderName: "Merry360X",
         senderEmail: "support@merry360x.com",
         to: [{ email: recipient.email, name: guestName }],
         subject: `Payment received - ${amountLabel}`,
@@ -527,7 +576,7 @@ async function sendPostBookingHostPaidEmail(supabase, charge, checkoutData) {
     },
     body: JSON.stringify(
       buildBrevoSmtpPayload({
-        senderName: "Merry 360 Experiences",
+        senderName: "Merry360X",
         senderEmail: "support@merry360x.com",
         to: [{ email: recipient.email, name: safeStr(hostProfile?.full_name || "Host", 120) || "Host" }],
         subject: `Post-booking payment received - ${amountLabel}`,
@@ -584,7 +633,7 @@ async function sendPostBookingAdminPaidEmail(supabase, charge) {
       },
       body: JSON.stringify(
         buildBrevoSmtpPayload({
-          senderName: "Merry 360 Experiences",
+          senderName: "Merry360X",
           senderEmail: "support@merry360x.com",
           to: [{ email: recipient.email, name: safeStr(admin?.full_name || "Admin", 120) || "Admin" }],
           subject: `Post-booking payment completed - ${amountLabel}`,

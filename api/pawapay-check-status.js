@@ -108,7 +108,7 @@ async function sendHostPayoutStatusEmail({ toEmail, toName, status, amount, curr
     },
     body: JSON.stringify(
       buildBrevoSmtpPayload({
-        senderName: "Merry 360 Experiences",
+        senderName: "Merry360X",
         senderEmail: "support@merry360x.com",
         to: [{ email: recipient.email, name: toName || "Host" }],
         subject,
@@ -195,7 +195,7 @@ async function sendPostBookingGuestPaidEmail(supabase, charge, checkoutData) {
     },
     body: JSON.stringify(
       buildBrevoSmtpPayload({
-        senderName: "Merry 360 Experiences",
+        senderName: "Merry360X",
         senderEmail: "support@merry360x.com",
         to: [{ email: recipient.email, name: guestName }],
         subject: `Payment received - ${amountLabel}`,
@@ -263,7 +263,7 @@ async function sendPostBookingHostPaidEmail(supabase, charge, checkoutData) {
     },
     body: JSON.stringify(
       buildBrevoSmtpPayload({
-        senderName: "Merry 360 Experiences",
+        senderName: "Merry360X",
         senderEmail: "support@merry360x.com",
         to: [{ email: recipient.email, name: safeStr(hostProfile?.full_name || "Host", 120) || "Host" }],
         subject: `Post-booking payment received - ${amountLabel}`,
@@ -320,7 +320,7 @@ async function sendPostBookingAdminPaidEmail(supabase, charge) {
       },
       body: JSON.stringify(
         buildBrevoSmtpPayload({
-          senderName: "Merry 360 Experiences",
+          senderName: "Merry360X",
           senderEmail: "support@merry360x.com",
           to: [{ email: recipient.email, name: safeStr(admin?.full_name || "Admin", 120) || "Admin" }],
           subject: `Post-booking payment completed - ${amountLabel}`,
