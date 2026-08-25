@@ -316,7 +316,7 @@ You can track updates in your host dashboard: https://merry360x.com/host-dashboa
   `.trim();
 
   const adminFinanceRecipients = [
-    { email: SUPPORT_EMAIL, name: "Merry 360 Experiences Support" },
+    { email: SUPPORT_EMAIL, name: "Merry360X Support" },
     { email: FINANCE_EMAIL, name: FINANCE_NAME },
   ].filter((recipient, index, all) => recipient.email && all.findIndex((r) => String(r.email).toLowerCase() === String(recipient.email).toLowerCase()) === index);
 
