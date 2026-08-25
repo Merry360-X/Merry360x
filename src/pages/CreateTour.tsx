@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -76,9 +76,10 @@ export default function CreateTour() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { id: paramId } = useParams();
   const queryClient = useQueryClient();
   const [hostProfileComplete, setHostProfileComplete] = useState(false);
-  const editId = searchParams.get("editId");
+  const editId = searchParams.get("editId") || paramId;
   const isEditMode = Boolean(editId);
   const [isEditLoading, setIsEditLoading] = useState(false);
 

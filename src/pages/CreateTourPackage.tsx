@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,43 @@ import { getDraftWizardStep } from "@/lib/draft-session";
 
 const categories = ["Cultural", "Adventure", "Wildlife", "City Tours", "Hiking", "Photography", "Historical", "Eco-Tourism"];
 const tourTypes = ["Private", "Group"];
+const defaultCountries = [
+  "Rwanda",
+  "Uganda",
+  "Kenya",
+  "Tanzania",
+  "Burundi",
+  "DR Congo",
+  "Ethiopia",
+  "South Africa",
+  "Egypt",
+  "Morocco",
+  "Ghana",
+  "Nigeria",
+  "Zambia",
+  "Zimbabwe",
+  "Botswana",
+  "Namibia",
+  "Mauritius",
+  "Seychelles",
+  "Madagascar",
+  "Cameroon",
+  "Ivory Coast",
+  "Senegal",
+  "Mozambique",
+  "Malawi",
+  "Congo",
+  "United Arab Emirates",
+  "United Kingdom",
+  "United States",
+  "France",
+  "Germany",
+  "Italy",
+  "Spain",
+  "Turkey",
+  "India",
+  "China",
+];
 const tourPricingModels = [
   { value: "per_person", label: "Per person" },
   { value: "per_group", label: "Per group" },
@@ -61,14 +98,16 @@ function normalizeGroupPricingTiers(raw: unknown): GroupPricingTier[] {
 }
 
 export default function CreateTourPackage() {
-  const { user, isHost, isLoading } = useAuth();
+  const { user, isHost, isAdmin, isStaff, isLoading } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { id: paramId } = useParams();
   const queryClient = useQueryClient();
+  const [originalHostId, setOriginalHostId] = useState<string | null>(null);
 
   const redirectTo = searchParams.get("redirect") || "/host-dashboard";
-  const editId = searchParams.get("editId");
+  const editId = searchParams.get("editId") || paramId;
   const isEditMode = Boolean(editId);
 
   const defaultCancellationPolicy = `STANDARD EXPERIENCES (Day Tours & Activities)
@@ -92,6 +131,7 @@ Some components are non-refundable once booked, including but not limited to:
 
   const [formData, setFormData] = useState({
     title: "",
+    country: "Rwanda",
     categories: [] as string[],
     tour_types: [] as string[],
     description: "",
@@ -118,6 +158,8 @@ Some components are non-refundable once booked, including but not limited to:
     price_for_east_african: "",
     price_for_foreigners: "",
   });
+
+  const [isCustomCountry, setIsCustomCountry] = useState(false);
 
   // Group discounts as an array of tiers
   const [groupDiscounts, setGroupDiscounts] = useState<Array<{min_people: number, max_people: number | null, discount_percentage: number}>>([]);
@@ -194,12 +236,16 @@ Some components are non-refundable once booked, including but not limited to:
 
     const fetchPackageForEdit = async () => {
       setIsEditLoading(true);
-      const { data, error } = await supabase
+      let query = supabase
         .from("tour_packages")
         .select("*")
-        .eq("id", editId)
-        .eq("host_id", user.id)
-        .maybeSingle();
+        .eq("id", editId);
+
+      if (!isAdmin && !isStaff) {
+        query = query.eq("host_id", user.id);
+      }
+
+      const { data, error } = await query.maybeSingle();
 
       if (!isMounted) return;
 
@@ -214,6 +260,8 @@ Some components are non-refundable once booked, including but not limited to:
         return;
       }
 
+      setOriginalHostId(data.host_id || null);
+
       const categoriesFromDb = ((data as any).categories as string[] | null) || [];
       const tourTypesFromDb = ((data as any).tour_types as string[] | null) || [];
       const mergedCategories = categoriesFromDb.length > 0
@@ -223,8 +271,14 @@ Some components are non-refundable once booked, including but not limited to:
         ? tourTypesFromDb
         : [data.tour_type].filter(Boolean) as string[];
 
+      const countryVal = data.country || "Rwanda";
+      if (countryVal && !defaultCountries.includes(countryVal)) {
+        setIsCustomCountry(true);
+      }
+
       setFormData({
         title: data.title || "",
+        country: countryVal,
         categories: mergedCategories,
         tour_types: mergedTourTypes,
         description: data.description || "",
@@ -345,9 +399,13 @@ Some components are non-refundable once booked, including but not limited to:
             pricing_model: draft.formData.pricing_model,
             pricing_models: draft.formData.pricing_models,
           });
+          if (draft.formData.country && !defaultCountries.includes(draft.formData.country)) {
+            setIsCustomCountry(true);
+          }
           setFormData((prev) => ({
             ...prev,
             ...draft.formData,
+            country: draft.formData.country || prev.country || "Rwanda",
             pricing_models: loadedPricingModels,
             pricing_model: loadedPricingModels[0] || "per_person",
             pricing_duration_value: Number(draft.formData.pricing_duration_value || 1),
@@ -399,6 +457,7 @@ Some components are non-refundable once booked, including but not limited to:
     Boolean(
       formData.title.trim() ||
       formData.description.trim() ||
+      formData.country.trim() ||
       formData.city.trim() ||
       formData.daily_itinerary.trim() ||
       formData.included_services.trim() ||
@@ -569,7 +628,7 @@ Some components are non-refundable once booked, including but not limited to:
       (!selectedPolicies.includes('custom') || (customPolicyText.trim().length >= 20 || customPolicyFile !== null));
     
     return formData.title.trim() && formData.categories.length > 0 && formData.tour_types.length > 0 &&
-      formData.description.trim().length >= 50 && formData.city.trim() &&
+      formData.description.trim().length >= 50 && formData.country.trim() && formData.city.trim() &&
       formData.duration.trim() && formData.daily_itinerary.trim().length >= 100 &&
       formData.meeting_point.trim() && policyValid &&
       (parseFloat(formData.price_per_adult) > 0 || hasValidTimeTier || hasValidGroupTier) &&
@@ -591,6 +650,7 @@ Some components are non-refundable once booked, including but not limited to:
     if (formData.categories.length === 0) missing.push("At least one category");
     if (formData.tour_types.length === 0) missing.push("At least one tour type");
     if (formData.description.trim().length < 50) missing.push("Description (minimum 50 characters)");
+    if (!formData.country.trim()) missing.push("Country");
     if (!formData.city.trim()) missing.push("City");
     if (!formData.duration.trim()) missing.push("Duration");
     if (formData.daily_itinerary.trim().length < 100) missing.push("Daily itinerary (minimum 100 characters)");
@@ -691,12 +751,12 @@ Some components are non-refundable once booked, including but not limited to:
       const nonRefundableItems = [...selectedNonRefundable];
 
       const packageData: Database['public']['Tables']['tour_packages']['Insert'] = {
-        host_id: user.id,
+        host_id: (isEditMode && originalHostId) ? originalHostId : user.id,
         title: formData.title.trim(),
         category: formData.categories[0] || 'Cultural',
         tour_type: formData.tour_types[0] || 'Private', // Use first selected type for DB constraint
         description: formData.description.trim(),
-        country: "Rwanda",
+        country: formData.country.trim() || "Rwanda",
         city: formData.city.trim(),
         duration: formData.duration.trim(),
         daily_itinerary: formData.daily_itinerary.trim(),
@@ -813,14 +873,18 @@ Some components are non-refundable once booked, including but not limited to:
             ...(packageData as any),
             categories: formData.categories,
           },
-          async (nextPayload) =>
-            await supabase
+          async (nextPayload) => {
+            let updateQuery = supabase
               .from("tour_packages")
               .update(nextPayload)
-              .eq("id", editId)
-              .eq("host_id", user.id)
-              .select("id")
-              .maybeSingle()
+              .eq("id", editId);
+
+            if (!isAdmin && !isStaff) {
+              updateQuery = updateQuery.eq("host_id", user.id);
+            }
+
+            return await updateQuery.select("id").maybeSingle();
+          }
         );
         if (error) throw error;
         if (!(updatedPackage as any)?.id) {
@@ -996,7 +1060,60 @@ Some components are non-refundable once booked, including but not limited to:
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <Label className="text-sm font-normal">Country *</Label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextCustom = !isCustomCountry;
+                      setIsCustomCountry(nextCustom);
+                      if (!nextCustom && !defaultCountries.includes(formData.country)) {
+                        setFormData({ ...formData, country: "Rwanda" });
+                      }
+                    }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {isCustomCountry ? "Choose from list" : "+ Type custom"}
+                  </button>
+                </div>
+                {isCustomCountry ? (
+                  <Input
+                    value={formData.country}
+                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                    placeholder="Enter country name"
+                    className="h-10"
+                  />
+                ) : (
+                  <Select
+                    value={defaultCountries.includes(formData.country) ? formData.country : "custom"}
+                    onValueChange={(val) => {
+                      if (val === "custom") {
+                        setIsCustomCountry(true);
+                        setFormData({ ...formData, country: "" });
+                      } else {
+                        setFormData({ ...formData, country: val });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-10 bg-background">
+                      <SelectValue placeholder="Select country" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[280px]">
+                      {defaultCountries.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {c}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="custom" className="font-medium text-primary border-t mt-1 pt-1">
+                        + Other (Type custom country)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
               <div>
                 <Label className="text-sm font-normal mb-1.5 block">City *</Label>
                 <Input

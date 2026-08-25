@@ -521,9 +521,53 @@ const App = () => (
                   </RequireAuth>
                 }
               />
+              <Route
+                path="/edit-tour/:id"
+                element={
+                  <RequireAuth>
+                    <RequireRole allowed={["host"]}>
+                      <CreateTour />
+                    </RequireRole>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/edit-tour"
+                element={
+                  <RequireAuth>
+                    <RequireRole allowed={["host"]}>
+                      <CreateTour />
+                    </RequireRole>
+                  </RequireAuth>
+                }
+              />
 
               <Route
                 path="/create-tour-package"
+                element={
+                  <RequireAuth>
+                    <CreateTourPackage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/create-tour-package/:id"
+                element={
+                  <RequireAuth>
+                    <CreateTourPackage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/edit-tour-package/:id"
+                element={
+                  <RequireAuth>
+                    <CreateTourPackage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/edit-tour-package"
                 element={
                   <RequireAuth>
                     <CreateTourPackage />
