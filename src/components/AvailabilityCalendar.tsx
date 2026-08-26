@@ -66,7 +66,7 @@ export default function AvailabilityCalendar({
       .select("*")
       .eq("property_id", propertyId)
       .order("start_date", { ascending: true });
-    
+
     if (error) {
       console.error("Error fetching custom prices:", error);
     } else {
@@ -215,7 +215,7 @@ export default function AvailabilityCalendar({
     const allBlocked = [...dedupedManualBlocks, ...dedupedBookingBlocks].sort(
       (a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
     );
-    
+
     setBlockedDates(allBlocked);
   };
 
@@ -308,14 +308,14 @@ export default function AvailabilityCalendar({
         <TabsTrigger value="availability">Availability</TabsTrigger>
         <TabsTrigger value="pricing">Custom Pricing</TabsTrigger>
       </TabsList>
-      
+
       <TabsContent value="availability" className="space-y-4">
         <div>
           <Label className="text-sm font-medium">Block Dates</Label>
           <p className="text-xs text-muted-foreground mb-3">
             Select dates to make unavailable for booking
           </p>
-          
+
           <div className="flex justify-center mb-3">
             <Calendar
               mode="range"
@@ -372,9 +372,8 @@ export default function AvailabilityCalendar({
               {blockedDates.map((bd) => (
                 <div
                   key={bd.id}
-                  className={`flex items-center justify-between p-2 rounded-md text-sm ${
-                    bd.source === "booking" ? "bg-primary/10 border border-primary/20" : "bg-muted"
-                  }`}
+                  className={`flex items-center justify-between p-2 rounded-md text-sm ${bd.source === "booking" ? "bg-primary/10 border border-primary/20" : "bg-muted"
+                    }`}
                 >
                   <div className="flex items-center gap-2">
                     {bd.source === "booking" && (
@@ -409,14 +408,14 @@ export default function AvailabilityCalendar({
           </div>
         )}
       </TabsContent>
-      
+
       <TabsContent value="pricing" className="space-y-4">
         <div>
           <Label className="text-sm font-medium">Set Custom Price</Label>
           <p className="text-xs text-muted-foreground mb-3">
             Override the default nightly rate for specific dates
           </p>
-          
+
           <div className="flex justify-center mb-3">
             <Calendar
               mode="range"
