@@ -68,7 +68,7 @@ const fetchProperties = async (args: {
   try {
     let query = (supabase.from("properties") as any)
       .select(
-        "id, title, location, price_per_night, price_per_month, available_for_monthly_rental, monthly_only_listing, currency, property_type, rating, review_count, images, main_image, created_at, bedrooms, bathrooms, beds, lat, lng, host_id, max_guests, check_in_time, check_out_time, smoking_allowed, events_allowed, pets_allowed"
+        "id, title, location, address, description, price_per_night, price_per_month, available_for_monthly_rental, monthly_only_listing, currency, property_type, rating, review_count, images, main_image, amenities, weekly_discount, monthly_discount, breakfast_available, breakfast_price_per_night, conference_room_price, conference_room_capacity, conference_room_duration_hours, conference_room_equipment, created_at, bedrooms, bathrooms, beds, lat, lng, host_id, max_guests, check_in_time, check_out_time, smoking_allowed, events_allowed, pets_allowed"
       )
       .eq("is_published", true)
       .order("created_at", { ascending: false })

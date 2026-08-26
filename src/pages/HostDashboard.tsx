@@ -927,48 +927,104 @@ export default function HostDashboard() {
     return [selected, ...reordered];
   };
 
-  const mapPropertyToForm = (property: Property | Record<string, any>) => ({
-    ...createDefaultPropertyForm(),
-    title: String((property as any).title || (property as any).name || ""),
-    hotel_id: String((property as any).hotel_id || ""),
-    location: String((property as any).location || ""),
-    address: String((property as any).address || ""),
-    listing_mode: Boolean((property as any).monthly_only_listing)
-      ? "monthly_only"
-      : "standard",
-    property_type: String((property as any).property_type || "Apartment"),
-    description: String((property as any).description || ""),
-    price_per_night: Number((property as any).price_per_night || 50000),
-    price_per_person: Number((property as any).price_per_person || 0) || null,
-    price_per_group: Number((property as any).price_per_group || 0) || null,
-    price_per_group_size: Math.max(1, Number((property as any).price_per_group_size || 2)),
-    currency: String((property as any).currency || "RWF"),
-    max_guests: Math.max(1, Number((property as any).max_guests || 2)),
-    bedrooms: Math.max(0, Number((property as any).bedrooms || 1)),
-    bathrooms: Math.max(0, Number((property as any).bathrooms || 1)),
-    beds: Math.max(0, Number((property as any).beds || 1)),
-    amenities: Array.isArray((property as any).amenities) ? (property as any).amenities : [],
-    cancellation_policy: String((property as any).cancellation_policy || "fair"),
-    images: withCoverFirst((property as any).images, (property as any).main_image),
-    weekly_discount: Number((property as any).weekly_discount || 0),
-    monthly_discount: Number((property as any).monthly_discount || 0),
-    available_for_monthly_rental: Boolean((property as any).available_for_monthly_rental),
-    price_per_month: Number((property as any).price_per_month || 0) || null,
-    breakfast_available: Boolean((property as any).breakfast_available),
-    breakfast_price_per_night: Number((property as any).breakfast_price_per_night || 0) || null,
-    check_in_time: String((property as any).check_in_time || "14:00"),
-    check_out_time: String((property as any).check_out_time || "11:00"),
-    smoking_allowed: Boolean((property as any).smoking_allowed),
-    events_allowed: Boolean((property as any).events_allowed),
-    pets_allowed: Boolean((property as any).pets_allowed),
-    conference_room_price: Number((property as any).conference_room_price || 0) || null,
-    conference_room_capacity: Math.max(1, Number((property as any).conference_room_capacity || 1)),
-    conference_room_duration_hours: Math.max(1, Number((property as any).conference_room_duration_hours || 1)),
-    conference_room_min_rooms_required: (property as any).conference_room_min_rooms_required ?? null,
-    conference_room_equipment: Array.isArray((property as any).conference_room_equipment)
-      ? (property as any).conference_room_equipment
-      : [],
-  });
+  const normalizeAmenities = (raw: unknown): string[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) {
+      return raw.map((item) => String(item).trim()).filter(Boolean);
+    }
+    if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      if (!trimmed) return [];
+      if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) {
+            return parsed.map((item) => String(item).trim()).filter(Boolean);
+          }
+        } catch {}
+      }
+      if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+        return trimmed
+          .slice(1, -1)
+          .split(",")
+          .map((s) => s.replace(/^["']|["']$/g, "").trim())
+          .filter(Boolean);
+      }
+      return trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+    return [];
+  };
+
+  const mapPropertyToForm = (property: Property | Record<string, any>) => {
+    const rawAmenities = normalizeAmenities((property as any).amenities);
+    const hasConferenceAmenities =
+      rawAmenities.includes("conference_room") ||
+      Number((property as any).conference_room_price || 0) > 0 ||
+      Boolean((property as any).conference_room_capacity);
+    const amenities = hasConferenceAmenities
+      ? Array.from(new Set([...rawAmenities, "conference_room"]))
+      : rawAmenities;
+
+    const address = String(
+      (property as any).address ||
+      (property as any).street_address ||
+      (property as any).location_address ||
+      ""
+    );
+
+    const description = (property as any).description != null
+      ? String((property as any).description)
+      : "";
+
+    const weeklyDiscount = Number(
+      (property as any).weekly_discount != null ? (property as any).weekly_discount : 0
+    );
+    const monthlyDiscount = Number(
+      (property as any).monthly_discount != null ? (property as any).monthly_discount : 0
+    );
+
+    const isMonthlyOnly = Boolean((property as any).monthly_only_listing) ||
+      (Boolean((property as any).available_for_monthly_rental) && Number((property as any).price_per_month || 0) > 0 && Number((property as any).price_per_night || 0) <= 0);
+
+    return {
+      ...createDefaultPropertyForm(),
+      title: String((property as any).title || (property as any).name || ""),
+      hotel_id: String((property as any).hotel_id || ""),
+      location: String((property as any).location || ""),
+      address,
+      listing_mode: isMonthlyOnly ? ("monthly_only" as const) : ("standard" as const),
+      property_type: String((property as any).property_type || "Apartment"),
+      description,
+      price_per_night: Number((property as any).price_per_night ?? 50000),
+      price_per_person: Number((property as any).price_per_person || 0) || null,
+      price_per_group: Number((property as any).price_per_group || 0) || null,
+      price_per_group_size: Math.max(1, Number((property as any).price_per_group_size || 2)),
+      currency: String((property as any).currency || "RWF"),
+      max_guests: Math.max(1, Number((property as any).max_guests || 2)),
+      bedrooms: Math.max(0, Number((property as any).bedrooms ?? 1)),
+      bathrooms: Math.max(0, Number((property as any).bathrooms ?? 1)),
+      beds: Math.max(0, Number((property as any).beds ?? 1)),
+      amenities,
+      cancellation_policy: String((property as any).cancellation_policy || "fair"),
+      images: withCoverFirst((property as any).images, (property as any).main_image),
+      weekly_discount: Number.isFinite(weeklyDiscount) ? weeklyDiscount : 0,
+      monthly_discount: Number.isFinite(monthlyDiscount) ? monthlyDiscount : 0,
+      available_for_monthly_rental: isMonthlyOnly ? true : Boolean((property as any).available_for_monthly_rental),
+      price_per_month: Number((property as any).price_per_month || 0) || null,
+      breakfast_available: Boolean((property as any).breakfast_available),
+      breakfast_price_per_night: Number((property as any).breakfast_price_per_night || 0) || null,
+      check_in_time: String((property as any).check_in_time || "14:00"),
+      check_out_time: String((property as any).check_out_time || "11:00"),
+      smoking_allowed: Boolean((property as any).smoking_allowed),
+      events_allowed: Boolean((property as any).events_allowed),
+      pets_allowed: Boolean((property as any).pets_allowed),
+      conference_room_price: Number((property as any).conference_room_price || 0) || null,
+      conference_room_capacity: Math.max(1, Number((property as any).conference_room_capacity || 1)),
+      conference_room_duration_hours: Math.max(1, Number((property as any).conference_room_duration_hours || 1)),
+      conference_room_min_rooms_required: (property as any).conference_room_min_rooms_required ?? null,
+      conference_room_equipment: normalizeAmenities((property as any).conference_room_equipment),
+    };
+  };
   const [propertyForm, setPropertyForm] = useState(createDefaultPropertyForm);
   const [creatingProperty, setCreatingProperty] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
@@ -980,7 +1036,6 @@ export default function HostDashboard() {
 
   // Load saved drafts on mount
   useEffect(() => {
-    if (propertyWizardEditId) return;
     try {
       const savedProperty = localStorage.getItem(PROPERTY_FORM_KEY);
       if (savedProperty) {
@@ -991,7 +1046,7 @@ export default function HostDashboard() {
     } catch (e) {
       console.error('Failed to load property draft:', e);
     }
-  }, [PROPERTY_FORM_KEY, propertyWizardEditId]);
+  }, [PROPERTY_FORM_KEY]);
 
   const hasPropertyDraftContent = useCallback((form = propertyForm, step = wizardStep) => {
     return Boolean(
@@ -1008,6 +1063,7 @@ export default function HostDashboard() {
   }, [propertyForm, wizardStep]);
 
   const savePropertyDraft = useCallback((form = propertyForm, step = wizardStep) => {
+    if (propertyWizardEditId) return false;
     if (!hasPropertyDraftContent(form, step)) return false;
     try {
       localStorage.setItem(PROPERTY_FORM_KEY, JSON.stringify({ form, step, timestamp: new Date().toISOString() }));
@@ -1016,23 +1072,23 @@ export default function HostDashboard() {
       console.error('Failed to save property draft:', e);
       return false;
     }
-  }, [PROPERTY_FORM_KEY, hasPropertyDraftContent, propertyForm, wizardStep]);
+  }, [PROPERTY_FORM_KEY, hasPropertyDraftContent, propertyForm, wizardStep, propertyWizardEditId]);
 
   // Auto-save property form
   useEffect(() => {
-    if (!showPropertyWizard) return;
+    if (!showPropertyWizard || propertyWizardEditId) return;
     void savePropertyDraft(propertyForm, wizardStep);
-  }, [propertyForm, wizardStep, showPropertyWizard, savePropertyDraft]);
+  }, [propertyForm, wizardStep, showPropertyWizard, propertyWizardEditId, savePropertyDraft]);
 
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (!showPropertyWizard) return;
+      if (!showPropertyWizard || propertyWizardEditId) return;
       void savePropertyDraft(propertyForm, wizardStep);
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [showPropertyWizard, propertyForm, wizardStep, savePropertyDraft]);
+  }, [showPropertyWizard, propertyForm, wizardStep, propertyWizardEditId, savePropertyDraft]);
 
 
 
@@ -1882,6 +1938,9 @@ export default function HostDashboard() {
         : [];
       normalizedUpdates.images = nextImages.length > 0 ? nextImages : null;
       normalizedUpdates.main_image = nextImages[0] ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "title") && !normalizedUpdates.name) {
+      normalizedUpdates.name = updates.title;
     }
 
     const { error } = await runPropertiesMutationWithFallback(
@@ -3605,7 +3664,6 @@ export default function HostDashboard() {
   };
 
   const openPropertyWizardForEdit = async (property: Property) => {
-    localStorage.removeItem(PROPERTY_FORM_KEY);
     setPropertyWizardEditId(property.id);
     setWizardStep(1);
     setPropertyForm(mapPropertyToForm(property));
@@ -3620,7 +3678,6 @@ export default function HostDashboard() {
     }
     setShowPropertyWizard(true);
 
-    let sourceProperty: Property | Record<string, any> = property;
     try {
       const { data: latestProperty, error } = await supabase
         .from("properties")
@@ -3629,13 +3686,11 @@ export default function HostDashboard() {
         .maybeSingle();
 
       if (!error && latestProperty) {
-        sourceProperty = latestProperty as any;
+        setPropertyForm(mapPropertyToForm(latestProperty));
       }
     } catch (error) {
       console.warn("[HostDashboard] Failed to fetch latest property for edit, using local state", error);
     }
-
-    setPropertyForm(mapPropertyToForm(sourceProperty));
   };
 
   const syncHotelRoomLinks = async (hotelId: string, relatedRoomIds: string[]) => {
@@ -3691,39 +3746,42 @@ export default function HostDashboard() {
 
     if (propertyWizardEditId) {
       const success = await updateProperty(propertyWizardEditId, {
-        title: propertyForm.title,
-        description: propertyForm.description,
-        location: propertyForm.location,
-        address: propertyForm.address,
+        title: propertyForm.title.trim(),
+        name: propertyForm.title.trim(),
+        description: propertyForm.description.trim() || null,
+        location: propertyForm.location.trim(),
+        address: propertyForm.address.trim() || null,
         property_type: propertyForm.property_type,
+        hotel_id: String(propertyForm.hotel_id || "").trim() || null,
         price_per_night: normalizedNightlyPrice,
-        price_per_group: propertyForm.listing_mode === "monthly_only" ? null : propertyForm.price_per_group,
-        price_per_group_size: propertyForm.price_per_group_size,
+        price_per_person: propertyForm.listing_mode === "monthly_only" ? null : (propertyForm.price_per_person ? Number(propertyForm.price_per_person) : null),
+        price_per_group: propertyForm.listing_mode === "monthly_only" ? null : (propertyForm.price_per_group ? Number(propertyForm.price_per_group) : null),
+        price_per_group_size: propertyForm.price_per_group_size ? Number(propertyForm.price_per_group_size) : 2,
         currency: propertyForm.currency,
-        max_guests: propertyForm.max_guests,
-        bedrooms: propertyForm.bedrooms,
-        bathrooms: propertyForm.bathrooms,
-        beds: propertyForm.beds,
-        amenities: propertyForm.amenities,
-        cancellation_policy: propertyForm.cancellation_policy,
+        max_guests: Number(propertyForm.max_guests) || 1,
+        bedrooms: Number(propertyForm.bedrooms) || 0,
+        bathrooms: Number(propertyForm.bathrooms) || 0,
+        beds: Number(propertyForm.beds) || 0,
+        amenities: propertyForm.amenities || [],
+        cancellation_policy: propertyForm.cancellation_policy || "fair",
         images: propertyForm.images,
         weekly_discount: Number(propertyForm.weekly_discount || 0),
         monthly_discount: Number(propertyForm.monthly_discount || 0),
         available_for_monthly_rental: propertyForm.listing_mode === "monthly_only" ? true : Boolean(propertyForm.available_for_monthly_rental),
-        price_per_month: propertyForm.listing_mode === "monthly_only" ? monthlyPrice : propertyForm.price_per_month,
+        price_per_month: propertyForm.listing_mode === "monthly_only" ? monthlyPrice : (propertyForm.price_per_month ? Number(propertyForm.price_per_month) : null),
         monthly_only_listing: propertyForm.listing_mode === "monthly_only",
         breakfast_available: Boolean(propertyForm.breakfast_available),
-        breakfast_price_per_night: propertyForm.breakfast_available ? propertyForm.breakfast_price_per_night : null,
-        check_in_time: propertyForm.check_in_time,
-        check_out_time: propertyForm.check_out_time,
+        breakfast_price_per_night: propertyForm.breakfast_available ? (propertyForm.breakfast_price_per_night ? Number(propertyForm.breakfast_price_per_night) : null) : null,
+        check_in_time: propertyForm.check_in_time || "14:00",
+        check_out_time: propertyForm.check_out_time || "11:00",
         smoking_allowed: Boolean(propertyForm.smoking_allowed),
         events_allowed: Boolean(propertyForm.events_allowed),
         pets_allowed: Boolean(propertyForm.pets_allowed),
-        conference_room_price: propertyForm.conference_room_price,
-        conference_room_capacity: propertyForm.conference_room_capacity,
-        conference_room_duration_hours: propertyForm.conference_room_duration_hours,
-        conference_room_min_rooms_required: propertyForm.conference_room_min_rooms_required,
-        conference_room_equipment: propertyForm.conference_room_equipment,
+        conference_room_price: propertyForm.conference_room_price ? Number(propertyForm.conference_room_price) : null,
+        conference_room_capacity: propertyForm.conference_room_capacity ? Number(propertyForm.conference_room_capacity) : null,
+        conference_room_duration_hours: propertyForm.conference_room_duration_hours ? Number(propertyForm.conference_room_duration_hours) : null,
+        conference_room_min_rooms_required: propertyForm.conference_room_min_rooms_required ?? null,
+        conference_room_equipment: propertyForm.conference_room_equipment || [],
       } as Partial<Property>);
 
       if (success) {
@@ -3744,6 +3802,7 @@ export default function HostDashboard() {
         setPropertyWizardEditId(null);
         resetPropertyForm();
         setSelectedHotelRoomIds([]);
+        fetchData();
       }
       return;
     }
@@ -4323,13 +4382,20 @@ export default function HostDashboard() {
       (Boolean(property.available_for_monthly_rental) && Number(property.price_per_month || 0) > 0 && Number(property.price_per_night || 0) <= 0);
     const cardPrice = isMonthlyOnly ? Number(property.price_per_month || 0) : Number(property.price_per_night || 0);
 
+    useEffect(() => {
+      setForm(property);
+    }, [property]);
+
     const handleSave = async () => {
       const success = await updateProperty(property.id, {
         title: form.title,
+        name: form.title,
         description: form.description,
         location: form.location,
+        address: form.address || null,
         property_type: form.property_type,
         price_per_night: form.price_per_night,
+        price_per_person: form.price_per_person,
         price_per_group: form.price_per_group,
         price_per_group_size: form.price_per_group_size,
         currency: form.currency,
@@ -4341,6 +4407,16 @@ export default function HostDashboard() {
         cancellation_policy: form.cancellation_policy,
         images: form.images,
         is_published: form.is_published,
+        weekly_discount: Number(form.weekly_discount || 0),
+        monthly_discount: Number(form.monthly_discount || 0),
+        available_for_monthly_rental: form.available_for_monthly_rental,
+        price_per_month: form.price_per_month,
+        monthly_only_listing: form.monthly_only_listing,
+        check_in_time: form.check_in_time,
+        check_out_time: form.check_out_time,
+        smoking_allowed: form.smoking_allowed,
+        events_allowed: form.events_allowed,
+        pets_allowed: form.pets_allowed,
         conference_room_capacity: form.conference_room_capacity ?? null,
         conference_room_price: form.conference_room_price ?? null,
         conference_room_duration_hours: form.conference_room_duration_hours ?? null,
@@ -4351,7 +4427,10 @@ export default function HostDashboard() {
           ? (form.breakfast_price_per_night ? Number(form.breakfast_price_per_night) : null)
           : null,
       });
-      if (success) setEditingPropertyId(null);
+      if (success) {
+        setEditingPropertyId(null);
+        fetchData();
+      }
     };
 
     const handleDragStart = (index: number) => {
@@ -6845,21 +6924,27 @@ export default function HostDashboard() {
               {wizardStep > 1 ? "Back" : "Cancel"}
             </button>
             <div className="text-center">
-              <h1 className="text-xl font-bold text-foreground">List Your Property</h1>
+              <h1 className="text-xl font-bold text-foreground">
+                {propertyWizardEditId ? "Edit Your Property" : "List Your Property"}
+              </h1>
               <p className="text-sm text-muted-foreground">Step {wizardStep} of {totalSteps}: {stepTitles[wizardStep - 1]}</p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (!window.confirm("Discard saved draft? This cannot be undone.")) return;
-                discardPropertyDraft();
-              }}
-              className="text-destructive border-destructive/30 hover:bg-destructive/10"
-            >
-              Discard Draft
-            </Button>
+            {!propertyWizardEditId ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (!window.confirm("Discard saved draft? This cannot be undone.")) return;
+                  discardPropertyDraft();
+                }}
+                className="text-destructive border-destructive/30 hover:bg-destructive/10"
+              >
+                Discard Draft
+              </Button>
+            ) : (
+              <div className="w-24" />
+            )}
           </div>
 
           {/* Progress Bar */}

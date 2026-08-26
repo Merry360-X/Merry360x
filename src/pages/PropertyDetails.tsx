@@ -35,6 +35,7 @@ type PropertyRow = {
   id: string;
   title: string;
   location: string;
+  address?: string | null;
   price_per_night: number;
   price_per_month?: number | null;
   available_for_monthly_rental?: boolean | null;
@@ -1823,6 +1824,9 @@ export default function PropertyDetails() {
                 <div>
                   <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2">{data.title}</h1>
                   <p className="text-muted-foreground">{extractNeighborhood(data.location)}</p>
+                  {data.address ? (
+                    <p className="text-xs text-muted-foreground mt-0.5">{data.address}</p>
+                  ) : null}
                 </div>
                 <div className="text-right">
                   <div className="text-lg font-bold text-primary">

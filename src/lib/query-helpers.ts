@@ -49,7 +49,7 @@ export const fetchPropertiesOptimized = async (filters: {
   let query = supabase
     .from("properties")
     .select(
-      "id, title, location, price_per_night, currency, property_type, rating, review_count, images, created_at, bedrooms, bathrooms, beds, max_guests, check_in_time, check_out_time, smoking_allowed, events_allowed, pets_allowed"
+      "id, title, location, address, description, price_per_night, price_per_month, available_for_monthly_rental, monthly_only_listing, currency, property_type, rating, review_count, images, main_image, amenities, weekly_discount, monthly_discount, breakfast_available, breakfast_price_per_night, created_at, bedrooms, bathrooms, beds, max_guests, check_in_time, check_out_time, smoking_allowed, events_allowed, pets_allowed"
     );
 
   // Use index on is_published
