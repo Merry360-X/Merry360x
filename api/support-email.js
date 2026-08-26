@@ -47,9 +47,7 @@ function buildSupportEmailHtml(payload) {
     { label: "User ID", value: escapeHtml(payload.userId || "Unknown") },
     { label: "Subject", value: escapeHtml(payload.subject || "Support request") },
   ]);
-
   const messageHtml = `<p style="margin: 12px 0 0; color: #111827; font-size: 14px; line-height: 1.6;">${escapeHtml(payload.message || "No message provided")}</p>`;
-
   return renderMinimalEmail({
     eyebrow: "Support",
     title: "New support ticket",

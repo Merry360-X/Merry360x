@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, Fragment } from "react";
 import { Search, Star, ChevronLeft, ChevronRight, MapPin, Sparkles, Filter } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "@/components/Navbar";
@@ -1330,12 +1330,11 @@ const Accommodations = () => {
                           return false;
                         })
                         .map((page, idx, arr) => (
-                          <>
+                          <Fragment key={page}>
                             {idx > 0 && arr[idx - 1] !== page - 1 && (
                               <span key={`ellipsis-${page}`} className="px-2 text-muted-foreground">...</span>
                             )}
                             <Button
-                              key={page}
                               variant={currentPage === page ? "default" : "outline"}
                               size="sm"
                               onClick={() => setCurrentPage(page)}
@@ -1343,7 +1342,7 @@ const Accommodations = () => {
                             >
                               {page}
                             </Button>
-                          </>
+                          </Fragment>
                         ))}
                     </div>
 
