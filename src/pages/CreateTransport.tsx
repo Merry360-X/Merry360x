@@ -16,6 +16,7 @@ import { uploadFile } from "@/lib/uploads";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import { HostCreationSubpage } from "@/components/HostCreationSubpage";
+import DraggableMediaGrid from "@/components/DraggableMediaGrid";
 import { Progress } from "@/components/ui/progress";
 import { isVideoUrl } from "@/lib/media";
 import { getDraftWizardStep } from "@/lib/draft-session";
@@ -571,6 +572,22 @@ export default function CreateTransport() {
       }
       return prev.filter((_, i) => i !== index);
     });
+  };
+
+  const handleExteriorReorder = (newUrls: string[]) => {
+    const previewMap = new Map(exteriorPreviews.map((p) => [p.src, p]));
+    const reorderedPreviews = newUrls.map((url) => previewMap.get(url) || toRemoteMediaPreview(url));
+    setExteriorPreviews(reorderedPreviews);
+    const validUrls = newUrls.filter((u) => !u.startsWith("blob:"));
+    setExistingExteriorUrls(validUrls);
+  };
+
+  const handleInteriorReorder = (newUrls: string[]) => {
+    const previewMap = new Map(interiorPreviews.map((p) => [p.src, p]));
+    const reorderedPreviews = newUrls.map((url) => previewMap.get(url) || toRemoteMediaPreview(url));
+    setInteriorPreviews(reorderedPreviews);
+    const validUrls = newUrls.filter((u) => !u.startsWith("blob:"));
+    setExistingInteriorUrls(validUrls);
   };
 
   // Document upload helpers — upload immediately on selection
@@ -1133,34 +1150,28 @@ export default function CreateTransport() {
                 <Camera className="w-5 h-5" />
                 Exterior Media *
               </CardTitle>
-              <CardDescription>Upload clear photos of the outside of your vehicle (front, back, sides)</CardDescription>
+              <CardDescription>Upload clear photos of the outside of your vehicle. Drag photos to change the display order.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {exteriorPreviews.map((preview, index) => (
-                  <div key={`${preview.src}-${index}`} className="relative aspect-square">
-                    <MediaPreviewTile preview={preview} alt={`Exterior ${index + 1}`} />
-                    <button
-                      type="button"
-                      onClick={() => removeExteriorImage(index)}
-                      className="absolute top-2 right-2 p-1 bg-destructive text-destructive-foreground rounded-full"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-                <label className="aspect-square border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-muted">
-                  <Upload className="w-8 h-8 text-muted-foreground mb-2" />
-                  <span className="text-sm text-muted-foreground">Add Exterior</span>
-                  <input
-                    type="file"
-                    accept="image/*,video/*"
-                    multiple
-                    onChange={handleExteriorImageChange}
-                    className="hidden"
-                  />
-                </label>
-              </div>
+              <DraggableMediaGrid
+                images={exteriorPreviews.map((p) => p.src)}
+                onImagesChange={handleExteriorReorder}
+                onUploadClick={() => {
+                  const input = document.getElementById("exterior-upload-input") as HTMLInputElement;
+                  input?.click();
+                }}
+                title={`Exterior Photos (${exteriorPreviews.length})`}
+                columnsClass="grid-cols-2 sm:grid-cols-3 md:grid-cols-4"
+                maxFiles={15}
+              />
+              <input
+                id="exterior-upload-input"
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                onChange={handleExteriorImageChange}
+                className="hidden"
+              />
             </CardContent>
           </Card>
 
@@ -1171,34 +1182,29 @@ export default function CreateTransport() {
                 <Camera className="w-5 h-5" />
                 Interior Media
               </CardTitle>
-              <CardDescription>Upload photos of the inside of your vehicle (dashboard, seats, trunk)</CardDescription>
+              <CardDescription>Upload photos of the inside of your vehicle (dashboard, seats, trunk). Drag photos to arrange them.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {interiorPreviews.map((preview, index) => (
-                  <div key={`${preview.src}-${index}`} className="relative aspect-square">
-                    <MediaPreviewTile preview={preview} alt={`Interior ${index + 1}`} />
-                    <button
-                      type="button"
-                      onClick={() => removeInteriorImage(index)}
-                      className="absolute top-2 right-2 p-1 bg-destructive text-destructive-foreground rounded-full"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-                <label className="aspect-square border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-muted">
-                  <Upload className="w-8 h-8 text-muted-foreground mb-2" />
-                  <span className="text-sm text-muted-foreground">Add Interior</span>
-                  <input
-                    type="file"
-                    accept="image/*,video/*"
-                    multiple
-                    onChange={handleInteriorImageChange}
-                    className="hidden"
-                  />
-                </label>
-              </div>
+              <DraggableMediaGrid
+                images={interiorPreviews.map((p) => p.src)}
+                onImagesChange={handleInteriorReorder}
+                onUploadClick={() => {
+                  const input = document.getElementById("interior-upload-input") as HTMLInputElement;
+                  input?.click();
+                }}
+                title={`Interior Photos (${interiorPreviews.length})`}
+                columnsClass="grid-cols-2 sm:grid-cols-3 md:grid-cols-4"
+                allowCoverBadge={false}
+                maxFiles={15}
+              />
+              <input
+                id="interior-upload-input"
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                onChange={handleInteriorImageChange}
+                className="hidden"
+              />
             </CardContent>
           </Card>
             </>

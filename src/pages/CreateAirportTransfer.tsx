@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Upload, X, Plane, Save } from "lucide-react";
 import { CloudinaryUploadDialog } from "@/components/CloudinaryUploadDialog";
+import DraggableMediaGrid from "@/components/DraggableMediaGrid";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card } from "@/components/ui/card";
 import { HostCreationSubpage } from "@/components/HostCreationSubpage";
@@ -798,61 +799,28 @@ export default function CreateAirportTransfer() {
               <h2 className="text-xl font-semibold border-b pb-2">Vehicle Photos</h2>
               
               <div>
-                <Label>Exterior Media * (at least 1 photo or video)</Label>
-                <div className="mt-2">
-                  {exteriorImages.length > 0 && (
-                    <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {exteriorImages.map((url, idx) => (
-                        <div key={idx} className="relative group">
-                          {isVideoUrl(url) ? (
-                            <video src={url} className="w-full h-24 object-cover rounded border" muted playsInline preload="metadata" />
-                          ) : (
-                            <img src={url} alt="" className="w-full h-24 object-cover rounded border" />
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setExteriorImages(exteriorImages.filter((_, i) => i !== idx))}
-                            className="absolute top-1 right-1 bg-destructive text-white p-1 rounded-full opacity-0 group-hover:opacity-100"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <Button type="button" variant="outline" onClick={() => setExteriorDialogOpen(true)}>
-                    <Upload className="w-4 h-4 mr-2" /> Upload Exterior Media
-                  </Button>
-                </div>
+                <DraggableMediaGrid
+                  images={exteriorImages}
+                  onImagesChange={setExteriorImages}
+                  onUploadClick={() => setExteriorDialogOpen(true)}
+                  title="Exterior Media * (at least 1 photo or video)"
+                  description="Upload photos/videos of the outside. Drag to rearrange order (first photo is Cover)."
+                  columnsClass="grid-cols-2 sm:grid-cols-3 md:grid-cols-4"
+                  maxFiles={15}
+                />
               </div>
 
               <div>
-                <Label>Interior Media</Label>
-                <div className="mt-2">
-                  {interiorImages.length > 0 && (
-                    <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {interiorImages.map((url, idx) => (
-                        <div key={idx} className="relative group">
-                          {isVideoUrl(url) ? (
-                            <video src={url} className="w-full h-24 object-cover rounded border" muted playsInline preload="metadata" />
-                          ) : (
-                            <img src={url} alt="" className="w-full h-24 object-cover rounded border" />
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setInteriorImages(interiorImages.filter((_, i) => i !== idx))}
-                            className="absolute top-1 right-1 bg-destructive text-white p-1 rounded-full opacity-0 group-hover:opacity-100"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <Button type="button" variant="outline" onClick={() => setInteriorDialogOpen(true)}>
-                    <Upload className="w-4 h-4 mr-2" /> Upload Interior Media
-                  </Button>
-                </div>
+                <DraggableMediaGrid
+                  images={interiorImages}
+                  onImagesChange={setInteriorImages}
+                  onUploadClick={() => setInteriorDialogOpen(true)}
+                  title="Interior Media"
+                  description="Upload photos/videos of the inside. Drag photos to arrange them."
+                  columnsClass="grid-cols-2 sm:grid-cols-3 md:grid-cols-4"
+                  allowCoverBadge={false}
+                  maxFiles={15}
+                />
               </div>
             </div>
 

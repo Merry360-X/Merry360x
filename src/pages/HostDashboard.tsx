@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { CloudinaryUploadDialog } from "@/components/CloudinaryUploadDialog";
+import DraggableMediaGrid from "@/components/DraggableMediaGrid";
 import AvailabilityCalendar from "@/components/AvailabilityCalendar";
 import { isVideoUrl } from "@/lib/media";
 import { logError, uiErrorMessage } from "@/lib/ui-errors";
@@ -847,6 +848,7 @@ export default function HostDashboard() {
   const [showPropertyWizard, setShowPropertyWizard] = useState(false);
   const [showRoomWizard, setShowRoomWizard] = useState(false);
   const [roomWizardStep, setRoomWizardStep] = useState(1);
+  const [roomUploadDialogOpen, setRoomUploadDialogOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
   const [selectedHotelRoomIds, setSelectedHotelRoomIds] = useState<string[]>([]);
   const createDefaultPropertyForm = () => ({
@@ -4561,47 +4563,13 @@ export default function HostDashboard() {
                 </p>
               ) : null}
               <div>
-                <Label className="text-xs">Images ({(form.images || []).length}) - Drag to reorder, first image is the cover</Label>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {(form.images || []).map((img, i) => (
-                    <div 
-                      key={i} 
-                      className={`relative rounded overflow-hidden group cursor-move ${
-                        i === 0 ? 'w-24 h-24' : 'w-14 h-14'
-                      } ${draggedIndex === i ? 'opacity-50' : ''}`}
-                      draggable
-                      onDragStart={() => handleDragStart(i)}
-                      onDragOver={(e) => handleDragOver(e, i)}
-                      onDragEnd={handleDragEnd}
-                    >
-                      {isVideoUrl(img) ? (
-                        <video src={img} className="w-full h-full object-cover pointer-events-none" muted />
-                      ) : (
-                        <img src={img} className="w-full h-full object-cover pointer-events-none" draggable={false} />
-                      )}
-                      {i === 0 && <span className="absolute bottom-0 left-0 right-0 bg-primary/90 text-white text-[11px] text-center py-1 font-semibold">Cover</span>}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setForm((f) => ({ ...f, images: (f.images || []).filter((_, j) => j !== i) }));
-                        }}
-                        className={`absolute top-0 right-0 ${i === 0 ? 'w-6 h-6' : 'w-5 h-5'} bg-red-600 text-white text-xs flex items-center justify-center hover:bg-red-700 opacity-0 group-hover:opacity-100 transition-opacity`}
-                        title="Remove"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setEditUploadOpen(true)}
-                    className="w-14 h-14 rounded border-2 border-dashed border-border flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                    title="Add images"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
+                <DraggableMediaGrid
+                  images={form.images || []}
+                  onImagesChange={(newImages) => setForm((f) => ({ ...f, images: newImages }))}
+                  onUploadClick={() => setEditUploadOpen(true)}
+                  title={`Images (${(form.images || []).length})`}
+                  columnsClass="grid-cols-3 sm:grid-cols-4 md:grid-cols-5"
+                />
               </div>
               <div>
                 <Label className="text-xs font-medium mb-2 block">Availability & Pricing</Label>
@@ -4959,31 +4927,27 @@ export default function HostDashboard() {
               </div>
 
               {/* Images */}
-              <div className="space-y-2">
-                <Label className="text-xs font-medium">Images</Label>
-                {displayImages.length > 0 && (
-                  <div className="grid grid-cols-3 gap-2">
-                    {displayImages.map((img, idx) => (
-                      <div key={idx} className="relative group">
-                        <img src={img} alt="" className="w-full h-20 object-cover rounded border" />
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          className="absolute top-1 right-1 h-5 w-5 p-0 opacity-0 group-hover:opacity-100"
-                          onClick={() => handleRemoveImage(img)}
-                        >
-                          <X className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <Input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => e.target.files?.[0] && handleAddImage(e.target.files[0])}
-                  className="text-xs h-8"
+              <div>
+                <DraggableMediaGrid
+                  images={displayImages}
+                  onImagesChange={(reordered) => {
+                    setForm((f) => ({ ...f, images: reordered }));
+                    setNewImages([]);
+                    setRemovedImages([]);
+                  }}
+                  onUploadClick={() => {
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.accept = "image/*";
+                    input.multiple = true;
+                    input.onchange = (e) => {
+                      const files = Array.from((e.target as HTMLInputElement).files || []);
+                      files.forEach((file) => handleAddImage(file));
+                    };
+                    input.click();
+                  }}
+                  title={`Tour Photos (${displayImages.length})`}
+                  columnsClass="grid-cols-3 sm:grid-cols-4"
                   disabled={uploading}
                 />
               </div>
@@ -5931,30 +5895,13 @@ export default function HostDashboard() {
                 <span className="text-sm">Driver included</span>
               </div>
               <div>
-                <Label className="text-xs">Images ({(form.media || []).length})</Label>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {(form.media || []).map((img, i) => (
-                    <div key={i} className="relative w-14 h-14 rounded overflow-hidden group">
-                      <img src={img} className="w-full h-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => setForm((f) => ({ ...f, media: (f.media || []).filter((_, j) => j !== i) }))}
-                        className="absolute top-0 right-0 w-5 h-5 bg-red-600 text-white text-xs flex items-center justify-center hover:bg-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Remove"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setEditUploadOpen(true)}
-                    className="w-14 h-14 rounded border-2 border-dashed border-border flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                    title="Add images"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
+                <DraggableMediaGrid
+                  images={form.media || []}
+                  onImagesChange={(reordered) => setForm((f) => ({ ...f, media: reordered }))}
+                  onUploadClick={() => setEditUploadOpen(true)}
+                  title={`Vehicle Photos (${(form.media || []).length})`}
+                  columnsClass="grid-cols-3 sm:grid-cols-4"
+                />
               </div>
               <div className="flex items-center justify-between pt-2">
                 <div className="flex items-center gap-2">
@@ -6378,48 +6325,21 @@ export default function HostDashboard() {
                 <>
               {/* Room Photos */}
               <div className="space-y-4">
-                <Label className="text-sm font-medium">Room Photos</Label>
-                <p className="text-sm text-muted-foreground">Add photos of your room to attract guests</p>
-                
-                {propertyForm.images.length > 0 && (
-                  <div className="grid grid-cols-3 gap-3">
-                    {propertyForm.images.map((url, idx) => (
-                      <div key={idx} className="relative aspect-square rounded-lg overflow-hidden group">
-                        <img src={url} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <button
-                            type="button"
-                            onClick={() => setPropertyForm((f) => ({ ...f, images: f.images.filter((_, i) => i !== idx) }))}
-                            className="p-2 bg-white rounded-full text-destructive hover:bg-destructive hover:text-white transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                        {idx === 0 && (
-                          <div className="absolute top-1 left-1 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">
-                            Cover
-                          </div>
-                        )}
-                        {idx !== 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setPropertyForm((f) => ({ ...f, images: moveImageToCover(f.images, idx) }))}
-                            className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-black/80"
-                          >
-                            Set as cover
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
+                <DraggableMediaGrid
+                  images={propertyForm.images || []}
+                  onImagesChange={(reordered) => setPropertyForm((f) => ({ ...f, images: reordered }))}
+                  onUploadClick={() => setRoomUploadDialogOpen(true)}
+                  title="Room Photos"
+                  description="Add and rearrange photos of your room. Drag photos to change the order."
+                  columnsClass="grid-cols-2 sm:grid-cols-3 md:grid-cols-4"
+                  maxFiles={15}
+                />
                 <CloudinaryUploadDialog
                   title="Upload Room Photos"
                   folder="merry360/rooms"
                   accept="image/*"
                   multiple
-                  maxFiles={10}
+                  maxFiles={15}
                   value={propertyForm.images}
                   onChange={(urls) => {
                     setPropertyForm((f) => ({
@@ -6427,7 +6347,8 @@ export default function HostDashboard() {
                       images: preserveCoverOnImageChange(f.images, urls),
                     }));
                   }}
-                  buttonLabel={propertyForm.images.length > 0 ? `Add More Photos (${propertyForm.images.length})` : "Upload Photos"}
+                  open={roomUploadDialogOpen}
+                  onOpenChange={setRoomUploadDialogOpen}
                 />
               </div>
 
@@ -7671,72 +7592,25 @@ export default function HostDashboard() {
                 <div className="text-center mb-8">
                   <ImageIcon className="w-12 h-12 mx-auto text-primary mb-4" />
                   <h2 className="text-2xl font-bold text-foreground">Add photos of your property</h2>
-                  <p className="text-muted-foreground mt-2">Great photos help guests choose your place</p>
+                  <p className="text-muted-foreground mt-2">Great photos help guests choose your place. Drag photos to arrange their order.</p>
                 </div>
 
-                {/* Upload Area */}
-                <div
-                  onClick={() => setUploadDialogOpen(true)}
-                  className="border-2 border-dashed border-border rounded-2xl p-10 text-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
-                >
-                  <Upload className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-lg font-medium text-foreground">Click to upload photos</p>
-                  <p className="text-sm text-muted-foreground mt-2">or drag and drop</p>
-                  <p className="text-xs text-muted-foreground mt-4">PNG, JPG, or Video up to 10MB each</p>
-                </div>
-
-                {/* Uploaded Images Grid */}
-                {propertyForm.images.length > 0 && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-base font-medium">{propertyForm.images.length} photo(s) uploaded</Label>
-                      <Button variant="outline" size="sm" onClick={() => setUploadDialogOpen(true)}>
-                        <Plus className="w-4 h-4 mr-2" /> Add More
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {propertyForm.images.map((url, idx) => (
-                        <div key={idx} className="relative aspect-square rounded-xl overflow-hidden group">
-                          {isVideoUrl(url) ? (
-                            <video src={url} className="w-full h-full object-cover" muted playsInline />
-                          ) : (
-                            <img src={url} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
-                          )}
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                            <button
-                              type="button"
-                              onClick={() => setPropertyForm((f) => ({ ...f, images: f.images.filter((_, i) => i !== idx) }))}
-                              className="p-2 bg-white rounded-full text-destructive hover:bg-destructive hover:text-white transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                          {idx === 0 && (
-                            <div className="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                              Cover
-                            </div>
-                          )}
-                          {idx !== 0 && (
-                            <button
-                              type="button"
-                              onClick={() => setPropertyForm((f) => ({ ...f, images: moveImageToCover(f.images, idx) }))}
-                              className="absolute bottom-2 left-2 rounded bg-black/70 px-2 py-1 text-xs font-medium text-white hover:bg-black/80"
-                            >
-                              Set as cover
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <DraggableMediaGrid
+                  images={propertyForm.images || []}
+                  onImagesChange={(reordered) => setPropertyForm((f) => ({ ...f, images: reordered }))}
+                  onUploadClick={() => setUploadDialogOpen(true)}
+                  title={`Property Photos (${propertyForm.images.length})`}
+                  description="Drag photos to reorder. The first photo with the Star badge is your cover photo."
+                  columnsClass="grid-cols-2 sm:grid-cols-3 md:grid-cols-4"
+                  maxFiles={25}
+                />
 
                 <CloudinaryUploadDialog
                   title="Upload Property Photos"
                   folder="merry360/properties"
                   accept="image/*,video/*"
                   multiple
-                  maxFiles={20}
+                  maxFiles={25}
                   autoStart={true}
                   value={propertyForm.images}
                   onChange={(urls) => {
@@ -8140,46 +8014,18 @@ export default function HostDashboard() {
                 <div className="text-center mb-8">
                   <ImageIcon className="w-12 h-12 mx-auto text-primary mb-4" />
                   <h2 className="text-2xl font-bold text-foreground">Add vehicle photos or video</h2>
-                  <p className="text-muted-foreground mt-2">Show guests what they get</p>
-              </div>
-
-                <div
-                  onClick={() => setVehicleUploadDialogOpen(true)}
-                  className="border-2 border-dashed border-border rounded-2xl p-10 text-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
-                >
-                  <Upload className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-lg font-medium text-foreground">Click to upload media</p>
-                  <p className="text-sm text-muted-foreground mt-2">or drag and drop</p>
-                  <p className="text-xs text-muted-foreground mt-4">PNG, JPG, or Video up to 10MB each</p>
+                  <p className="text-muted-foreground mt-2">Show guests what they get. Drag photos to arrange their order.</p>
                 </div>
 
-                {vehicleForm.media.length > 0 && (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {vehicleForm.media.map((url, idx) => (
-                      <div key={idx} className="relative aspect-square rounded-xl overflow-hidden group">
-                        {isVideoUrl(url) ? (
-                          <video src={url} className="w-full h-full object-cover" muted playsInline />
-                        ) : (
-                          <img src={url} alt={`Media ${idx + 1}`} className="w-full h-full object-cover" />
-                        )}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <button
-                            type="button"
-                            onClick={() => setVehicleForm((f) => ({ ...f, media: f.media.filter((_, i) => i !== idx) }))}
-                            className="p-2 bg-white rounded-full text-destructive hover:bg-destructive hover:text-white transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                        {idx === 0 && (
-                          <div className="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                            Cover
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <DraggableMediaGrid
+                  images={vehicleForm.media || []}
+                  onImagesChange={(reordered) => setVehicleForm((f) => ({ ...f, media: reordered }))}
+                  onUploadClick={() => setVehicleUploadDialogOpen(true)}
+                  title={`Vehicle Photos (${vehicleForm.media.length})`}
+                  description="Drag photos to rearrange. The first photo with Star badge will be the main display photo."
+                  columnsClass="grid-cols-2 sm:grid-cols-3 md:grid-cols-4"
+                  maxFiles={20}
+                />
 
                 <CloudinaryUploadDialog
                   title="Upload Vehicle Media"

@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Upload, X, AlertCircle, Loader2, Save } from "lucide-react";
 import { CloudinaryUploadDialog } from "@/components/CloudinaryUploadDialog";
+import DraggableMediaGrid from "@/components/DraggableMediaGrid";
 import { extractPDFMetadata, validatePDF } from "@/lib/pdf-extractor";
 import { uploadFile } from "@/lib/uploads";
 import { useQueryClient } from "@tanstack/react-query";
@@ -1218,40 +1219,30 @@ export default function CreateTour() {
             <h2 className="text-base font-medium pb-2 border-b">Media & Files</h2>
 
             <div>
-              <Label className="text-sm font-normal mb-2 block">Tour Media * <span className="text-xs text-muted-foreground">(at least 1 photo or video)</span></Label>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {images.map((img, i) => (
-                  <div key={i} className="relative group">
-                    {isVideoUrl(img) ? (
-                      <video src={img} className="w-20 h-20 object-cover rounded border" muted playsInline preload="metadata" />
-                    ) : (
-                      <img src={img} alt="" className="w-20 h-20 object-cover rounded border" />
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setImages(images.filter((_, idx) => idx !== i))}
-                      className="absolute -top-1.5 -right-1.5 bg-destructive text-white rounded-full p-1 opacity-0 group-hover:opacity-100"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => setCloudinaryDialogOpen(true)}>
-                <Upload className="w-3.5 h-3.5 mr-1.5" /> Upload Media
-              </Button>
-              {errors.images && <p className="text-xs text-destructive mt-1">{errors.images}</p>}
+              <DraggableMediaGrid
+                images={images}
+                onImagesChange={(reordered) => {
+                  setImages(reordered);
+                  setTouched((prev) => new Set([...prev, 'images']));
+                }}
+                onUploadClick={() => setCloudinaryDialogOpen(true)}
+                title="Tour Media *"
+                description="Upload photos and videos of your tour. Drag photos to arrange the order (first photo is Cover)."
+                columnsClass="grid-cols-2 sm:grid-cols-3 md:grid-cols-4"
+                maxFiles={15}
+              />
+              {errors.images && <p className="text-xs text-destructive mt-1.5">{errors.images}</p>}
               <CloudinaryUploadDialog
                 title="Upload Media"
                 folder="tours"
                 accept="image/*,video/*"
                 multiple={true}
-                maxFiles={10}
+                maxFiles={15}
                 autoStart={true}
                 value={images}
                 onChange={(urls) => {
                   setImages(urls);
-                  setTouched(prev => new Set([...prev, 'images']));
+                  setTouched((prev) => new Set([...prev, 'images']));
                 }}
                 open={cloudinaryDialogOpen}
                 onOpenChange={setCloudinaryDialogOpen}
