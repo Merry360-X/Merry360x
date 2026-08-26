@@ -4298,12 +4298,46 @@ export default function HostDashboard() {
         integrationIds = [...integrationIds, ...createdIntegrationIds];
       }
 
+      // Also replicate manual blocked dates from active property to all selected accommodations
+      if (selectedCalendarPropertyId && selectedCalendarPropertyIds.length > 1) {
+        const { data: currentBlocks } = await supabase
+          .from("property_blocked_dates")
+          .select("start_date, end_date, reason")
+          .eq("property_id", selectedCalendarPropertyId);
+
+        if (currentBlocks && currentBlocks.length > 0) {
+          const otherPropertyIds = selectedCalendarPropertyIds.filter(id => id !== selectedCalendarPropertyId);
+          for (const otherId of otherPropertyIds) {
+            const { data: existingBlocks } = await supabase
+              .from("property_blocked_dates")
+              .select("start_date, end_date")
+              .eq("property_id", otherId);
+            
+            const existingKeys = new Set((existingBlocks || []).map(b => `${b.start_date}_${b.end_date}`));
+            const toInsert = currentBlocks
+              .filter(b => !existingKeys.has(`${b.start_date}_${b.end_date}`))
+              .map(b => ({
+                property_id: otherId,
+                start_date: b.start_date,
+                end_date: b.end_date,
+                reason: b.reason || "Blocked by host",
+                created_by: user?.id,
+              }));
+            
+            if (toInsert.length > 0) {
+              await supabase.from("property_blocked_dates").insert(toInsert);
+            }
+          }
+        }
+      }
+
       if (integrationIds.length === 0) {
         toast({
-          variant: "destructive",
-          title: "No integrations found",
-          description: "Paste an iCal URL and click Sync selected, or import an .ics/.zip file below.",
+          title: "Availability synced",
+          description: `Synced blocked dates across ${selectedCalendarPropertyIds.length} selected accommodations.`,
         });
+        setCalendarRefreshToken((value) => value + 1);
+        await Promise.all([fetchSelectedPropertyIntegrations(), fetchPropertyCalendarSummaries()]);
         return;
       }
 
@@ -4332,7 +4366,7 @@ export default function HostDashboard() {
 
       toast({
         title: "Selected calendars synced",
-        description: `Synced ${integrationIds.length} integration(s), imported ${importedCount} blocked date ranges.${autoConnectedNote}${tourNote}`,
+        description: `Synced ${selectedCalendarPropertyIds.length} accommodation(s) with ${integrationIds.length} integration(s), imported ${importedCount} blocked date ranges.${autoConnectedNote}${tourNote}`,
       });
 
       setCalendarRefreshToken((value) => value + 1);
@@ -8418,8 +8452,13 @@ export default function HostDashboard() {
                   {selectedCalendarPropertyId ? (
                     <AvailabilityCalendar
                       propertyId={selectedCalendarPropertyId}
+                      targetPropertyIds={selectedCalendarPropertyIds}
                       currency={properties.find((p) => p.id === selectedCalendarPropertyId)?.currency || "RWF"}
                       refreshToken={calendarRefreshToken}
+                      onBlockedDatesChanged={() => {
+                        setCalendarRefreshToken((value) => value + 1);
+                        void fetchPropertyCalendarSummaries();
+                      }}
                     />
                   ) : (
                     <p className="text-sm text-muted-foreground">Select a property to manage availability.</p>

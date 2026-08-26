@@ -33,11 +33,19 @@ type CustomPrice = {
 
 type AvailabilityCalendarProps = {
   propertyId: string;
+  targetPropertyIds?: string[];
   currency?: string;
   refreshToken?: number;
+  onBlockedDatesChanged?: () => void;
 };
 
-export default function AvailabilityCalendar({ propertyId, currency = "RWF", refreshToken = 0 }: AvailabilityCalendarProps) {
+export default function AvailabilityCalendar({
+  propertyId,
+  targetPropertyIds,
+  currency = "RWF",
+  refreshToken = 0,
+  onBlockedDatesChanged,
+}: AvailabilityCalendarProps) {
   const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([]);
   const [customPrices, setCustomPrices] = useState<CustomPrice[]>([]);
   const [selectedRange, setSelectedRange] = useState<{ from: Date; to?: Date } | undefined>();
@@ -80,20 +88,32 @@ export default function AvailabilityCalendar({ propertyId, currency = "RWF", ref
 
     const { data: { user } } = await supabase.auth.getUser();
 
+    const targetIds = (targetPropertyIds && targetPropertyIds.length > 0)
+      ? Array.from(new Set([propertyId, ...targetPropertyIds]))
+      : [propertyId];
+
+    const startDateStr = format(selectedRange.from, "yyyy-MM-dd");
+    const endDateStr = format(selectedRange.to || selectedRange.from, "yyyy-MM-dd");
+
     setLoading(true);
-    const { error } = await supabase.from("property_custom_prices").insert({
-      property_id: propertyId,
-      start_date: format(selectedRange.from, "yyyy-MM-dd"),
-      end_date: format(selectedRange.to || selectedRange.from, "yyyy-MM-dd"),
+    const rows = targetIds.map((id) => ({
+      property_id: id,
+      start_date: startDateStr,
+      end_date: endDateStr,
       custom_price_per_night: price,
       reason: reason || null,
       created_by: user?.id,
-    });
+    }));
+
+    const { error } = await supabase.from("property_custom_prices").insert(rows);
 
     if (error) {
       toast({ title: "Error setting custom price", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Custom price set successfully" });
+      toast({
+        title: "Custom price set successfully",
+        description: targetIds.length > 1 ? `Applied to ${targetIds.length} accommodations.` : undefined,
+      });
       setSelectedRange(undefined);
       setReason("");
       setCustomPriceAmount("");
@@ -103,7 +123,25 @@ export default function AvailabilityCalendar({ propertyId, currency = "RWF", ref
   };
 
   const removeCustomPrice = async (id: string) => {
-    const { error } = await supabase.from("property_custom_prices").delete().eq("id", id);
+    const targetIds = (targetPropertyIds && targetPropertyIds.length > 0)
+      ? Array.from(new Set([propertyId, ...targetPropertyIds]))
+      : [propertyId];
+
+    const targetPrice = customPrices.find((cp) => cp.id === id);
+
+    let error: any = null;
+    if (targetPrice && targetIds.length > 1) {
+      const res = await supabase
+        .from("property_custom_prices")
+        .delete()
+        .in("property_id", targetIds)
+        .eq("start_date", targetPrice.start_date)
+        .eq("end_date", targetPrice.end_date);
+      error = res.error;
+    } else {
+      const res = await supabase.from("property_custom_prices").delete().eq("id", id);
+      error = res.error;
+    }
 
     if (error) {
       toast({ title: "Error removing custom price", variant: "destructive" });
@@ -150,34 +188,27 @@ export default function AvailabilityCalendar({ propertyId, currency = "RWF", ref
       source: "blocked" as const
     }));
 
+    const bookingBlocks: BlockedDate[] = (bookingsResult.data || []).map(b => ({
+      id: b.id,
+      property_id: b.property_id,
+      start_date: b.check_in,
+      end_date: toLastNightDate(b.check_in, b.check_out),
+      reason: "Booked",
+      created_at: b.created_at,
+      source: "booking" as const
+    }));
+
     const dedupeByRange = (items: BlockedDate[]) => {
-      const byRange = new Map<string, BlockedDate>();
-      for (const item of items) {
-        const key = `${item.start_date}|${item.end_date}`;
-        if (!byRange.has(key)) {
-          byRange.set(key, item);
-        }
-      }
-      return Array.from(byRange.values());
+      const seen = new Set<string>();
+      return items.filter((item) => {
+        const key = `${item.start_date}_${item.end_date}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     };
 
     const dedupedManualBlocks = dedupeByRange(manualBlocks);
-    
-    // Convert bookings to blocked date format, excluding those already in manual blocks
-    const bookingBlocks: BlockedDate[] = (bookingsResult.data || [])
-      .filter(b => !dedupedManualBlocks.some(m => 
-        m.start_date === b.check_in && m.end_date === toLastNightDate(b.check_in, b.check_out)
-      ))
-      .map(b => ({
-        id: b.id,
-        property_id: b.property_id,
-        start_date: b.check_in,
-        end_date: toLastNightDate(b.check_in, b.check_out),
-        reason: `Booked (${b.status})`,
-        created_at: b.created_at,
-        source: "booking" as const
-      }));
-
     const dedupedBookingBlocks = dedupeByRange(bookingBlocks);
 
     // Combine and sort by start date
@@ -194,37 +225,69 @@ export default function AvailabilityCalendar({ propertyId, currency = "RWF", ref
       return;
     }
 
-    // Get the current user for created_by field
     const { data: { user } } = await supabase.auth.getUser();
 
+    const targetIds = (targetPropertyIds && targetPropertyIds.length > 0)
+      ? Array.from(new Set([propertyId, ...targetPropertyIds]))
+      : [propertyId];
+
+    const startDateStr = format(selectedRange.from, "yyyy-MM-dd");
+    const endDateStr = format(selectedRange.to || selectedRange.from, "yyyy-MM-dd");
+    const blockReason = reason || "Blocked by host";
+
     setLoading(true);
-    const { error } = await supabase.from("property_blocked_dates").insert({
-      property_id: propertyId,
-      start_date: format(selectedRange.from, "yyyy-MM-dd"),
-      end_date: format(selectedRange.to || selectedRange.from, "yyyy-MM-dd"),
-      reason: reason || "Blocked by host",
+    const rows = targetIds.map((id) => ({
+      property_id: id,
+      start_date: startDateStr,
+      end_date: endDateStr,
+      reason: blockReason,
       created_by: user?.id,
-    });
+    }));
+
+    const { error } = await supabase.from("property_blocked_dates").insert(rows);
 
     if (error) {
       toast({ title: "Error blocking dates", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Dates blocked successfully" });
+      toast({
+        title: "Dates blocked successfully",
+        description: targetIds.length > 1 ? `Applied to ${targetIds.length} accommodations.` : undefined,
+      });
       setSelectedRange(undefined);
       setReason("");
       fetchBlockedDates();
+      onBlockedDatesChanged?.();
     }
     setLoading(false);
   };
 
   const removeBlockedDate = async (id: string) => {
-    const { error } = await supabase.from("property_blocked_dates").delete().eq("id", id);
+    const targetIds = (targetPropertyIds && targetPropertyIds.length > 0)
+      ? Array.from(new Set([propertyId, ...targetPropertyIds]))
+      : [propertyId];
+
+    const targetBlock = blockedDates.find((b) => b.id === id);
+
+    let error: any = null;
+    if (targetBlock && targetIds.length > 1) {
+      const res = await supabase
+        .from("property_blocked_dates")
+        .delete()
+        .in("property_id", targetIds)
+        .eq("start_date", targetBlock.start_date)
+        .eq("end_date", targetBlock.end_date);
+      error = res.error;
+    } else {
+      const res = await supabase.from("property_blocked_dates").delete().eq("id", id);
+      error = res.error;
+    }
 
     if (error) {
       toast({ title: "Error removing blocked date", variant: "destructive" });
     } else {
       toast({ title: "Date unblocked successfully" });
       fetchBlockedDates();
+      onBlockedDatesChanged?.();
     }
   };
 

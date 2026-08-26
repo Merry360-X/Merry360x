@@ -583,21 +583,8 @@ export default function PropertyDetails() {
         return formatDateOnlyLocal(end);
       };
 
-      // First try the combined view, fallback to table if view doesn't exist
-      const { data: viewData, error: viewError } = await supabase
-        .from("property_unavailable_dates")
-        .select("start_date, end_date, reason, source")
-        .eq("property_id", propertyId!)
-        .order("start_date", { ascending: true });
-      
-      if (!viewError && viewData) {
-        return normalizeAndDeduplicate(
-          viewData as Array<{ start_date: string; end_date: string; reason: string | null; source?: string }>
-        );
-      }
-      
-      // Fallback: fetch from property_blocked_dates table + bookings separately
-      const [blockedResult, bookingsResult] = await Promise.all([
+      // Fetch from property_blocked_dates table + bookings + view
+      const [blockedResult, bookingsResult, viewResult] = await Promise.all([
         supabase
           .from("property_blocked_dates")
           .select("start_date, end_date, reason")
@@ -608,13 +595,18 @@ export default function PropertyDetails() {
           .select("check_in, check_out, status, payment_status")
           .eq("property_id", propertyId!)
           .in("status", ["pending", "confirmed", "completed"])
-          .in("payment_status", ["pending", "paid"])
+          .in("payment_status", ["pending", "paid"]),
+        supabase
+          .from("property_unavailable_dates")
+          .select("start_date, end_date, reason, source")
+          .eq("property_id", propertyId!)
+          .order("start_date", { ascending: true })
       ]);
       
       const blocked = (blockedResult.data || []).map(d => ({
         start_date: d.start_date,
         end_date: d.end_date,
-        reason: d.reason,
+        reason: d.reason || "Blocked by host",
         source: "blocked"
       }));
       
@@ -624,11 +616,19 @@ export default function PropertyDetails() {
         reason: "Booked",
         source: "booking"
       }));
+
+      const fromView = (viewResult.data || []).map(v => ({
+        start_date: v.start_date,
+        end_date: v.end_date,
+        reason: v.reason,
+        source: v.source || "blocked"
+      }));
       
       return normalizeAndDeduplicate(
-        [...blocked, ...booked] as Array<{ start_date: string; end_date: string; reason: string | null; source?: string }>
+        [...blocked, ...booked, ...fromView] as Array<{ start_date: string; end_date: string; reason: string | null; source?: string }>
       );
     },
+    staleTime: 1000 * 30, // 30 seconds fresh cache
   });
 
   // Fetch custom prices for this property
@@ -778,6 +778,20 @@ export default function PropertyDetails() {
     return false;
   }, [checkIn, blockedDates, doesStayOverlapBlockedRange]);
 
+  const isStayBlocked = useMemo(() => {
+    if (!checkIn || !checkOut || blockedDates.length === 0) return false;
+    const selectedStart = new Date(checkIn);
+    const selectedEnd = new Date(checkOut);
+    for (const blocked of blockedDates) {
+      const blockedStart = new Date(blocked.start_date);
+      const blockedEnd = new Date(blocked.end_date);
+      if (doesStayOverlapBlockedRange(selectedStart, selectedEnd, blockedStart, blockedEnd)) {
+        return true;
+      }
+    }
+    return false;
+  }, [checkIn, checkOut, blockedDates, doesStayOverlapBlockedRange]);
+
   // Check if selected dates overlap with blocked dates
   useEffect(() => {
     if (!checkIn || !checkOut || blockedDates.length === 0) return;
@@ -808,6 +822,8 @@ export default function PropertyDetails() {
         }
         
         toast({
+          variant: "destructive",
+          title: "Dates Unavailable",
           description: message,
         });
         break; // Only show one toast
@@ -919,6 +935,15 @@ export default function PropertyDetails() {
   const handleCheckInSelect = useCallback((selected?: Date) => {
     if (!selected) return;
 
+    if (isDateBlocked(selected)) {
+      toast({
+        variant: "destructive",
+        title: "Date Unavailable",
+        description: "This date has been blocked by the host or is already booked.",
+      });
+      return;
+    }
+
     setCheckInCalendarOpen(false);
 
     startTransition(() => {
@@ -937,10 +962,19 @@ export default function PropertyDetails() {
         return normalizedCheckOut < minimumCheckout ? minimumCheckout : normalizedCheckOut;
       });
     });
-  }, [getMinimumCheckoutDate]);
+  }, [getMinimumCheckoutDate, isDateBlocked, toast]);
 
   const handleCheckOutSelect = useCallback((selected?: Date) => {
     if (!selected) return;
+
+    if (isCheckoutDateDisabled(selected)) {
+      toast({
+        variant: "destructive",
+        title: "Date Unavailable",
+        description: "This checkout date is not available or overlaps with blocked dates.",
+      });
+      return;
+    }
 
     setCheckOutCalendarOpen(false);
 
@@ -949,7 +983,7 @@ export default function PropertyDetails() {
       normalizedCheckOut.setHours(0, 0, 0, 0);
       setCheckOut(normalizedCheckOut);
     });
-  }, []);
+  }, [isCheckoutDateDisabled, toast]);
 
   const media = useMemo(() => {
     const currentImages = (data?.images ?? []).filter(Boolean) as string[];
@@ -1108,6 +1142,15 @@ export default function PropertyDetails() {
     }
 
     // Check date availability
+    if (isStayBlocked) {
+      toast({
+        variant: "destructive",
+        title: "Dates Not Available",
+        description: "The selected dates overlap with dates blocked by the host. Please select different dates.",
+      });
+      return;
+    }
+
     const selectedStart = new Date(checkIn);
     const selectedEnd = new Date(checkOut);
     selectedStart.setHours(0, 0, 0, 0);
@@ -1152,6 +1195,15 @@ export default function PropertyDetails() {
 
   const addPropertyToTripCart = async () => {
     if (!data || !propertyId) return;
+
+    if (isStayBlocked) {
+      toast({
+        variant: "destructive",
+        title: "Dates Not Available",
+        description: "The selected stay overlaps with blocked dates. Please pick available dates.",
+      });
+      return;
+    }
     // Include booking metadata (dates, guests, nights)
     const metadata = {
       check_in: checkIn ? formatDateOnlyLocal(checkIn) : undefined,
@@ -2474,9 +2526,11 @@ export default function PropertyDetails() {
                   </div>
                   <div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end">
                     {(() => {
-                      const bookingDisabled = booking || nights <= 0 || (isMonthlyOnlyListing && nights < 30) || (addedAddOn && !isInTripCart);
+                      const bookingDisabled = booking || nights <= 0 || (isMonthlyOnlyListing && nights < 30) || isStayBlocked || (addedAddOn && !isInTripCart);
                       const bookingCtaLabel = booking
                         ? t("common.processing")
+                        : isStayBlocked
+                        ? "Dates Unavailable"
                         : addedAddOn
                         ? isInTripCart
                           ? t("propertyDetails.checkoutTrip")
