@@ -20,7 +20,7 @@ import AvailabilityCalendar from "@/components/AvailabilityCalendar";
 import { isVideoUrl } from "@/lib/media";
 import { logError, uiErrorMessage } from "@/lib/ui-errors";
 import { formatMoney, formatNumber } from "@/lib/money";
-import { AMENITIES, AMENITIES_BY_CATEGORY } from "@/lib/amenities";
+import { AMENITIES, AMENITIES_BY_CATEGORY, normalizeAmenityList } from "@/lib/amenities";
 import {
   PLATFORM_FEES,
 } from "@/lib/fees";
@@ -930,31 +930,7 @@ export default function HostDashboard() {
   };
 
   const normalizeAmenities = (raw: unknown): string[] => {
-    if (!raw) return [];
-    if (Array.isArray(raw)) {
-      return raw.map((item) => String(item).trim()).filter(Boolean);
-    }
-    if (typeof raw === "string") {
-      const trimmed = raw.trim();
-      if (!trimmed) return [];
-      if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-        try {
-          const parsed = JSON.parse(trimmed);
-          if (Array.isArray(parsed)) {
-            return parsed.map((item) => String(item).trim()).filter(Boolean);
-          }
-        } catch { }
-      }
-      if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-        return trimmed
-          .slice(1, -1)
-          .split(",")
-          .map((s) => s.replace(/^["']|["']$/g, "").trim())
-          .filter(Boolean);
-      }
-      return trimmed.split(",").map((s) => s.trim()).filter(Boolean);
-    }
-    return [];
+    return normalizeAmenityList(raw);
   };
 
   const mapPropertyToForm = (property: Property | Record<string, any>) => {
@@ -968,22 +944,41 @@ export default function HostDashboard() {
       : rawAmenities;
 
     const address = String(
-      (property as any).address ||
-      (property as any).street_address ||
-      (property as any).location_address ||
+      (property as any).address ??
+      (property as any).street ??
+      (property as any).street_address ??
+      (property as any).streetAddress ??
+      (property as any).location_address ??
+      (property as any).locationAddress ??
+      (property as any).address_line_1 ??
+      (property as any).address_line1 ??
+      (property as any).addressLine1 ??
       ""
     );
 
-    const description = (property as any).description != null
-      ? String((property as any).description)
-      : "";
+    const description = String(
+      (property as any).description ??
+      (property as any).details ??
+      (property as any).about ??
+      (property as any).overview ??
+      (property as any).summary ??
+      (property as any).desc ??
+      ""
+    );
 
-    const weeklyDiscount = Number(
-      (property as any).weekly_discount != null ? (property as any).weekly_discount : 0
-    );
-    const monthlyDiscount = Number(
-      (property as any).monthly_discount != null ? (property as any).monthly_discount : 0
-    );
+    const rawWeekly =
+      (property as any).weekly_discount ??
+      (property as any).weeklyDiscount ??
+      (property as any).discount_weekly ??
+      (property as any).weekly_discount_percentage;
+    const weeklyDiscount = rawWeekly != null && !isNaN(Number(rawWeekly)) ? Number(rawWeekly) : 0;
+
+    const rawMonthly =
+      (property as any).monthly_discount ??
+      (property as any).monthlyDiscount ??
+      (property as any).discount_monthly ??
+      (property as any).monthly_discount_percentage;
+    const monthlyDiscount = rawMonthly != null && !isNaN(Number(rawMonthly)) ? Number(rawMonthly) : 0;
 
     const isMonthlyOnly = Boolean((property as any).monthly_only_listing) ||
       (Boolean((property as any).available_for_monthly_rental) && Number((property as any).price_per_month || 0) > 0 && Number((property as any).price_per_night || 0) <= 0);
@@ -992,7 +987,7 @@ export default function HostDashboard() {
       ...createDefaultPropertyForm(),
       title: String((property as any).title || (property as any).name || ""),
       hotel_id: String((property as any).hotel_id || ""),
-      location: String((property as any).location || ""),
+      location: String((property as any).location || (property as any).city || (property as any).neighborhood || ""),
       address,
       listing_mode: isMonthlyOnly ? ("monthly_only" as const) : ("standard" as const),
       property_type: String((property as any).property_type || "Apartment"),
@@ -1944,24 +1939,38 @@ export default function HostDashboard() {
     if (Object.prototype.hasOwnProperty.call(updates, "title") && !normalizedUpdates.name) {
       normalizedUpdates.name = updates.title;
     }
+    if (Object.prototype.hasOwnProperty.call(updates, "amenities")) {
+      normalizedUpdates.amenities = normalizeAmenities(updates.amenities);
+    }
 
     const { error } = await runPropertiesMutationWithFallback(
       async (payload) => {
-        const response = await supabase
+        let response = await supabase
           .from("properties")
           .update(payload as never)
           .eq("id", id)
           .eq("host_id", user!.id)
           .select("id")
           .maybeSingle();
+
         if (response.error) return { error: response.error, data: null };
         if (!response.data?.id) {
-          return {
-            error: {
-              message: "Property update failed: listing not found or you don't have permission to edit it.",
-            },
-            data: null,
-          };
+          // Retry without host_id constraint in case owner column differs (e.g. created_by / user_id)
+          response = await supabase
+            .from("properties")
+            .update(payload as never)
+            .eq("id", id)
+            .select("id")
+            .maybeSingle();
+          if (response.error) return { error: response.error, data: null };
+          if (!response.data?.id) {
+            return {
+              error: {
+                message: "Property update failed: listing not found or you don't have permission to edit it.",
+              },
+              data: null,
+            };
+          }
         }
         return { error: null, data: response.data };
       },
@@ -3693,7 +3702,7 @@ export default function HostDashboard() {
         .maybeSingle();
 
       if (!error && latestProperty) {
-        setPropertyForm(mapPropertyToForm(latestProperty));
+        setPropertyForm(mapPropertyToForm({ ...property, ...latestProperty }));
       }
     } catch (error) {
       console.warn("[HostDashboard] Failed to fetch latest property for edit, using local state", error);
@@ -3750,14 +3759,20 @@ export default function HostDashboard() {
       ? 0
       : Number(propertyForm.price_per_night || 0);
     const isHotelType = String(propertyForm.property_type || "").toLowerCase() === "hotel";
+    const addressValue = propertyForm.address.trim() || null;
+    const descriptionValue = propertyForm.description.trim() || null;
+    const normalizedAmenitiesList = normalizeAmenities(propertyForm.amenities || []);
 
     if (propertyWizardEditId) {
       const success = await updateProperty(propertyWizardEditId, {
         title: propertyForm.title.trim(),
         name: propertyForm.title.trim(),
-        description: propertyForm.description.trim() || null,
+        description: descriptionValue,
+        details: descriptionValue,
         location: propertyForm.location.trim(),
-        address: propertyForm.address.trim() || null,
+        address: addressValue,
+        street: addressValue,
+        street_address: addressValue,
         property_type: propertyForm.property_type,
         hotel_id: String(propertyForm.hotel_id || "").trim() || null,
         price_per_night: normalizedNightlyPrice,
@@ -3769,7 +3784,7 @@ export default function HostDashboard() {
         bedrooms: Number(propertyForm.bedrooms) || 0,
         bathrooms: Number(propertyForm.bathrooms) || 0,
         beds: Number(propertyForm.beds) || 0,
-        amenities: propertyForm.amenities || [],
+        amenities: normalizedAmenitiesList,
         cancellation_policy: propertyForm.cancellation_policy || "fair",
         images: propertyForm.images,
         weekly_discount: Number(propertyForm.weekly_discount || 0),

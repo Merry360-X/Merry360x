@@ -239,3 +239,310 @@ export const AMENITIES_BY_CATEGORY: AmenityCategory[] = [
 ].filter(cat => cat.items.length > 0); // Only include categories with items
 
 export const amenityByValue = new Map(AMENITIES.map((a) => [a.value, a]));
+
+// Comprehensive alias map mapping labels, variants, and alternative keys to standard amenity values
+const AMENITY_ALIAS_MAP: Record<string, string> = {
+  // Wifi / Internet
+  "wifi": "wifi",
+  "wi-fi": "wifi",
+  "wireless internet": "wifi",
+  "internet": "wifi",
+  "free wifi": "wifi",
+  "free wi-fi": "wifi",
+  "high-speed wifi": "wifi",
+  "fast wifi": "wifi",
+
+  // TV
+  "tv": "tv_smart",
+  "smart tv": "tv_smart",
+  "tv_smart": "tv_smart",
+  "smart_tv": "tv_smart",
+  "basic tv": "tv_basic",
+  "tv_basic": "tv_basic",
+  "cable tv": "tv_basic",
+  "television": "tv_basic",
+
+  // Parking
+  "parking": "parking_free",
+  "free parking": "parking_free",
+  "parking_free": "parking_free",
+  "free_parking": "parking_free",
+  "free on-site parking": "parking_free",
+  "paid parking": "parking_paid",
+  "parking_paid": "parking_paid",
+  "paid_parking": "parking_paid",
+
+  // Workspace
+  "workspace": "workspace",
+  "dedicated workspace": "workspace",
+  "dedicated_workspace": "workspace",
+  "desk": "workspace",
+  "work desk": "workspace",
+
+  // Wardrobe / Storage / Safe
+  "wardrobe": "wardrobe",
+  "closet": "wardrobe",
+  "hangers": "hangers",
+  "safe": "safe",
+  "in-room safe": "safe",
+
+  // Climate
+  "ac": "ac",
+  "a/c": "ac",
+  "air conditioning": "ac",
+  "air conditioner": "ac",
+  "air_conditioning": "ac",
+  "heating": "heating",
+  "heater": "heating",
+  "fans": "fans",
+  "fan": "fans",
+  "ceiling fan": "fans",
+
+  // Bathroom & Water
+  "hot water": "hot_water",
+  "hot_water": "hot_water",
+  "water heater": "hot_water",
+  "toiletries": "toiletries",
+  "free toiletries": "toiletries",
+  "bathroom essentials": "bathroom_essentials",
+  "bathroom_essentials": "bathroom_essentials",
+  "cleaning supplies": "cleaning_items",
+  "cleaning_items": "cleaning_items",
+  "cleaning items": "cleaning_items",
+
+  // Bedroom & Linens
+  "bed linens": "bedsheets_pillows",
+  "bed linens & pillows": "bedsheets_pillows",
+  "bedsheets_pillows": "bedsheets_pillows",
+  "bed sheets": "bedsheets_pillows",
+  "pillows": "bedsheets_pillows",
+  "linens": "bedsheets_pillows",
+  "soundproofing": "soundproofing",
+  "soundproof": "soundproofing",
+
+  // Laundry
+  "washing machine": "washing_machine",
+  "washing_machine": "washing_machine",
+  "washer": "washing_machine",
+  "laundry": "washing_machine",
+  "dryer": "dryer",
+  "clothes dryer": "dryer",
+  "iron": "iron",
+  "iron & ironing board": "iron",
+  "ironing board": "iron",
+
+  // Kitchen
+  "kitchen": "kitchen",
+  "full kitchen": "kitchen",
+  "kitchenette": "kitchenette",
+  "refrigerator": "refrigerator",
+  "fridge": "refrigerator",
+  "microwave": "microwave",
+  "stove": "stove",
+  "cooker": "stove",
+  "stove/cooker": "stove",
+  "oven": "oven",
+  "dishwasher": "dishwasher",
+  "cookware": "cookware",
+  "cookware (pots & pans)": "cookware",
+  "pots & pans": "cookware",
+  "dishes": "dishes",
+  "dishes & utensils": "dishes",
+  "cutlery": "dishes",
+  "dining table": "dining_table",
+  "dining_table": "dining_table",
+  "blender": "blender",
+  "electric kettle": "kettle",
+  "kettle": "kettle",
+  "coffee maker": "coffee_maker",
+  "coffee_maker": "coffee_maker",
+  "coffee": "coffee_maker",
+
+  // Meals
+  "breakfast included": "breakfast_included",
+  "breakfast_included": "breakfast_included",
+  "free breakfast": "breakfast_included",
+  "breakfast available": "breakfast_available",
+  "breakfast available (paid)": "breakfast_available",
+  "breakfast_available": "breakfast_available",
+
+  // Recreation & Wellness
+  "gym": "gym",
+  "gym/fitness center": "gym",
+  "fitness center": "gym",
+  "fitness": "gym",
+  "swimming pool": "pool",
+  "pool": "pool",
+  "swimming_pool": "pool",
+  "outdoor pool": "pool",
+  "spa": "spa",
+  "sauna": "sauna",
+  "jacuzzi": "jacuzzi",
+  "hot tub": "jacuzzi",
+  "hot tub/jacuzzi": "jacuzzi",
+
+  // Safety
+  "smoke alarm": "smoke_alarm",
+  "smoke_alarm": "smoke_alarm",
+  "carbon monoxide alarm": "carbon_monoxide_alarm",
+  "carbon_monoxide_alarm": "carbon_monoxide_alarm",
+  "fire extinguisher": "fire_extinguisher",
+  "fire_extinguisher": "fire_extinguisher",
+  "first aid kit": "first_aid",
+  "first_aid": "first_aid",
+  "first aid": "first_aid",
+  "security cameras": "security_cameras",
+  "security cameras (exterior)": "security_cameras",
+  "security_cameras": "security_cameras",
+  "cctv": "security_cameras",
+  "security system": "security_system",
+  "security_system": "security_system",
+
+  // Rules
+  "no smoking": "no_smoking",
+  "no_smoking": "no_smoking",
+  "non-smoking": "no_smoking",
+  "pets allowed": "pets_allowed",
+  "pets_allowed": "pets_allowed",
+  "pet friendly": "pets_allowed",
+
+  // Views & Outdoor
+  "balcony": "balcony",
+  "patio": "patio",
+  "garden": "garden",
+  "terrace": "terrace",
+  "city view": "city_view",
+  "city_view": "city_view",
+  "mountain view": "mountain_view",
+  "mountain_view": "mountain_view",
+  "sea view": "sea_view",
+  "sea/ocean view": "sea_view",
+  "sea_view": "sea_view",
+  "ocean view": "sea_view",
+  "lake view": "lake_view",
+  "lake_view": "lake_view",
+  "landscape view": "landscape_view",
+  "landscape_view": "landscape_view",
+
+  // Accessibility
+  "elevator": "elevator",
+  "lift": "elevator",
+  "wheelchair accessible": "wheelchair_accessible",
+  "wheelchair_accessible": "wheelchair_accessible",
+  "ground floor access": "ground_floor",
+  "ground_floor": "ground_floor",
+
+  // Services
+  "meeting room": "meeting_room",
+  "meeting_room": "meeting_room",
+  "conference room": "conference_room",
+  "conference_room": "conference_room",
+  "conference": "conference_room",
+  "24/7 reception": "reception",
+  "reception": "reception",
+  "front desk": "reception",
+  "concierge": "concierge",
+  "concierge service": "concierge",
+  "restaurant": "restaurant",
+  "on-site restaurant": "restaurant",
+  "room service": "room_service",
+  "room_service": "room_service",
+
+  // Family
+  "family friendly": "family_friendly",
+  "family_friendly": "family_friendly",
+  "crib": "crib",
+  "crib/baby bed": "crib",
+  "baby bed": "crib",
+  "high chair": "high_chair",
+  "high_chair": "high_chair",
+  "fireplace": "fireplace",
+  "air purifier": "air_purifier",
+  "air_purifier": "air_purifier",
+};
+
+/**
+ * Resolves any raw amenity string (e.g. "Wi-Fi", "Free Parking", "pool", "Air conditioning")
+ * into its standardized amenity key (e.g. "wifi", "parking_free", "pool", "ac").
+ */
+export const resolveAmenityKey = (input: string): string | null => {
+  if (!input || typeof input !== "string") return null;
+  const clean = input.trim().toLowerCase();
+  if (!clean) return null;
+
+  // Direct alias lookup
+  if (AMENITY_ALIAS_MAP[clean]) {
+    return AMENITY_ALIAS_MAP[clean];
+  }
+
+  // Check normalized slug (e.g. "free-parking" -> "parking_free" or matching value)
+  const slug = clean.replace(/[\s-]+/g, "_");
+  if (AMENITY_ALIAS_MAP[slug]) {
+    return AMENITY_ALIAS_MAP[slug];
+  }
+  if (amenityByValue.has(slug)) {
+    return slug;
+  }
+  if (amenityByValue.has(clean)) {
+    return clean;
+  }
+
+  // Check by label lowercase match
+  const matchedByLabel = allAmenities.find(
+    (a) => a.label.toLowerCase() === clean || a.label.toLowerCase() === slug.replace(/_/g, " ")
+  );
+  if (matchedByLabel) {
+    return matchedByLabel.value;
+  }
+
+  return null;
+};
+
+/**
+ * Normalizes raw amenities from database / API / forms into a deduplicated array
+ * of standardized amenity key strings.
+ */
+export const normalizeAmenityList = (raw: unknown): string[] => {
+  if (!raw) return [];
+  let items: string[] = [];
+
+  if (Array.isArray(raw)) {
+    items = raw.map((item) => String(item).trim()).filter(Boolean);
+  } else if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          items = parsed.map((item) => String(item).trim()).filter(Boolean);
+        }
+      } catch { }
+    }
+    if (items.length === 0 && trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      items = trimmed
+        .slice(1, -1)
+        .split(",")
+        .map((s) => s.replace(/^["']|["']$/g, "").trim())
+        .filter(Boolean);
+    }
+    if (items.length === 0) {
+      items = trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+  }
+
+  const result: string[] = [];
+  const seen = new Set<string>();
+
+  for (const item of items) {
+    if (!item) continue;
+    const canonical = resolveAmenityKey(item);
+    const valueToAdd = canonical || item;
+    if (!seen.has(valueToAdd)) {
+      seen.add(valueToAdd);
+      result.push(valueToAdd);
+    }
+  }
+
+  return result;
+};
