@@ -2049,6 +2049,26 @@ export default function CheckoutNew() {
         check_out: searchParams.get("checkOut"),
         guests: Number(searchParams.get("guests")) || 1,
       } : null;
+
+      if (bookingDetails?.property_id && bookingDetails?.check_in && bookingDetails?.check_out) {
+        const { data: blockedRanges } = await supabase
+          .from("property_blocked_dates")
+          .select("start_date, end_date, reason")
+          .eq("property_id", bookingDetails.property_id);
+
+        if (blockedRanges && blockedRanges.length > 0) {
+          const cIn = String(bookingDetails.check_in).slice(0, 10);
+          const cOut = String(bookingDetails.check_out).slice(0, 10);
+          const isBlocked = blockedRanges.some((b) => {
+            const bStart = String(b.start_date).slice(0, 10);
+            const bEnd = String(b.end_date).slice(0, 10);
+            return cIn <= bEnd && cOut > bStart;
+          });
+          if (isBlocked) {
+            throw new Error("The selected dates have been blocked by the host. Please choose different dates.");
+          }
+        }
+      }
       
       // Convert total to RWF for storage (all non-card checkouts stored in RWF)
       // Use payableAmount (which may be individual share or full total)

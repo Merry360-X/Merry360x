@@ -583,23 +583,33 @@ export default function PropertyDetails() {
         return formatDateOnlyLocal(end);
       };
 
+      // Find all property IDs that should share blocked dates:
+      // 1. Current propertyId
+      // 2. data.hotel_id (if linked to a hotel)
+      const propertyIdsToQuery = new Set<string>([propertyId!]);
+      if (data?.hotel_id) {
+        propertyIdsToQuery.add(data.hotel_id);
+      }
+
+      const queryIds = Array.from(propertyIdsToQuery);
+
       // Fetch from property_blocked_dates table + bookings + view
       const [blockedResult, bookingsResult, viewResult] = await Promise.all([
         supabase
           .from("property_blocked_dates")
-          .select("start_date, end_date, reason")
-          .eq("property_id", propertyId!)
+          .select("start_date, end_date, reason, property_id")
+          .in("property_id", queryIds)
           .order("start_date", { ascending: true }),
         supabase
           .from("bookings")
-          .select("check_in, check_out, status, payment_status")
-          .eq("property_id", propertyId!)
+          .select("check_in, check_out, status, payment_status, property_id")
+          .in("property_id", queryIds)
           .in("status", ["pending", "confirmed", "completed"])
           .in("payment_status", ["pending", "paid"]),
         supabase
           .from("property_unavailable_dates")
-          .select("start_date, end_date, reason, source")
-          .eq("property_id", propertyId!)
+          .select("start_date, end_date, reason, source, property_id")
+          .in("property_id", queryIds)
           .order("start_date", { ascending: true })
       ]);
       
@@ -628,7 +638,7 @@ export default function PropertyDetails() {
         [...blocked, ...booked, ...fromView] as Array<{ start_date: string; end_date: string; reason: string | null; source?: string }>
       );
     },
-    staleTime: 1000 * 30, // 30 seconds fresh cache
+    staleTime: 1000 * 15, // 15 seconds fresh cache
   });
 
   // Fetch custom prices for this property
@@ -652,16 +662,12 @@ export default function PropertyDetails() {
   // Helper to get the custom price for a specific date
   const getCustomPriceForDate = useCallback((date: Date): number | null => {
     if (!customPrices.length) return null;
-    const checkDate = new Date(date);
-    checkDate.setHours(0, 0, 0, 0);
+    const dateStr = formatDateOnlyLocal(date);
     
     for (const cp of customPrices) {
-      const cpStart = new Date(cp.start_date);
-      const cpEnd = new Date(cp.end_date);
-      cpStart.setHours(0, 0, 0, 0);
-      cpEnd.setHours(0, 0, 0, 0);
-      
-      if (checkDate >= cpStart && checkDate <= cpEnd) {
+      const startStr = String(cp.start_date).slice(0, 10);
+      const endStr = String(cp.end_date).slice(0, 10);
+      if (dateStr >= startStr && dateStr <= endStr) {
         return cp.custom_price_per_night;
       }
     }
@@ -669,19 +675,15 @@ export default function PropertyDetails() {
   }, [customPrices]);
 
   const doesStayOverlapBlockedRange = useCallback(
-    (selectedStart: Date, selectedCheckoutExclusive: Date, blockedStart: Date, blockedEndInclusive: Date) => {
-      const normalizedSelectedStart = new Date(selectedStart);
-      const normalizedSelectedCheckout = new Date(selectedCheckoutExclusive);
-      const normalizedBlockedStart = new Date(blockedStart);
-      const normalizedBlockedEndExclusive = new Date(blockedEndInclusive);
+    (selectedStart: Date, selectedCheckoutExclusive: Date, blockedStartStr: string, blockedEndInclusiveStr: string) => {
+      const selStartStr = formatDateOnlyLocal(selectedStart);
+      const selEndStr = formatDateOnlyLocal(selectedCheckoutExclusive);
+      const bStartStr = String(blockedStartStr).slice(0, 10);
+      const bEndStr = String(blockedEndInclusiveStr).slice(0, 10);
 
-      normalizedSelectedStart.setHours(0, 0, 0, 0);
-      normalizedSelectedCheckout.setHours(0, 0, 0, 0);
-      normalizedBlockedStart.setHours(0, 0, 0, 0);
-      normalizedBlockedEndExclusive.setHours(0, 0, 0, 0);
-      normalizedBlockedEndExclusive.setDate(normalizedBlockedEndExclusive.getDate() + 1);
-
-      return normalizedSelectedStart < normalizedBlockedEndExclusive && normalizedSelectedCheckout > normalizedBlockedStart;
+      // Selected stay is [selStartStr, selEndStr) where selEndStr is checkout day (guest leaves in morning)
+      // Blocked stay is [bStartStr, bEndStr] (inclusive)
+      return selStartStr <= bEndStr && selEndStr > bStartStr;
     },
     []
   );
@@ -689,16 +691,12 @@ export default function PropertyDetails() {
   // Helper to check if a date falls within any blocked range
   const isDateBlocked = useCallback((date: Date) => {
     if (!date || blockedDates.length === 0) return false;
-    const checkDate = new Date(date);
-    checkDate.setHours(0, 0, 0, 0);
+    const dateStr = formatDateOnlyLocal(date);
     
     for (const blocked of blockedDates) {
-      const blockedStart = new Date(blocked.start_date);
-      const blockedEnd = new Date(blocked.end_date);
-      blockedStart.setHours(0, 0, 0, 0);
-      blockedEnd.setHours(0, 0, 0, 0);
-      
-      if (checkDate >= blockedStart && checkDate <= blockedEnd) {
+      const startStr = String(blocked.start_date).slice(0, 10);
+      const endStr = String(blocked.end_date).slice(0, 10);
+      if (dateStr >= startStr && dateStr <= endStr) {
         return true;
       }
     }
@@ -707,16 +705,13 @@ export default function PropertyDetails() {
 
   const getBlockedReasonForDate = useCallback((date: Date) => {
     if (!date || blockedDates.length === 0) return null;
-    const checkDate = new Date(date);
-    checkDate.setHours(0, 0, 0, 0);
+    const dateStr = formatDateOnlyLocal(date);
 
     for (const blocked of blockedDates) {
-      const blockedStart = new Date(blocked.start_date);
-      const blockedEnd = new Date(blocked.end_date);
-      blockedStart.setHours(0, 0, 0, 0);
-      blockedEnd.setHours(0, 0, 0, 0);
+      const startStr = String(blocked.start_date).slice(0, 10);
+      const endStr = String(blocked.end_date).slice(0, 10);
 
-      if (checkDate >= blockedStart && checkDate <= blockedEnd) {
+      if (dateStr >= startStr && dateStr <= endStr) {
         if (blocked.reason === "booked") return "Already booked";
         if (blocked.reason === "maintenance") return "Maintenance";
         if (blocked.reason === "personal use") return "Host unavailable";
@@ -729,48 +724,40 @@ export default function PropertyDetails() {
 
   // Create disabled dates matcher for Calendar component
   const disabledDates = useMemo(() => {
-    const before = new Date();
-    before.setHours(0, 0, 0, 0);
-    
-    // Build array of blocked date ranges
-    const blockedRanges = blockedDates.map(blocked => ({
-      from: new Date(blocked.start_date),
-      to: new Date(blocked.end_date)
-    }));
-    
+    const todayStr = isoToday();
+
     return [
-      { before }, // Disable past dates
-      ...blockedRanges // Disable all blocked date ranges
+      (date: Date) => {
+        if (!date) return false;
+        const dateStr = formatDateOnlyLocal(date);
+        if (dateStr < todayStr) return true;
+        return isDateBlocked(date);
+      }
     ];
-  }, [blockedDates]);
+  }, [isDateBlocked]);
 
   const blockedDateRanges = useMemo(
-    () => blockedDates.map((blocked) => ({ from: new Date(blocked.start_date), to: new Date(blocked.end_date) })),
+    () => blockedDates.map((blocked) => {
+      const from = parseDateParamLocal(blocked.start_date) || new Date(blocked.start_date);
+      const to = parseDateParamLocal(blocked.end_date) || new Date(blocked.end_date);
+      return { from, to };
+    }),
     [blockedDates]
   );
 
   const isCheckoutDateDisabled = useCallback((date: Date) => {
     if (!date) return false;
 
-    const candidateCheckout = new Date(date);
-    candidateCheckout.setHours(0, 0, 0, 0);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (candidateCheckout < today) return true;
+    const dateStr = formatDateOnlyLocal(date);
+    const todayStr = isoToday();
+    if (dateStr < todayStr) return true;
 
     if (!checkIn) return false;
-
-    const selectedStart = new Date(checkIn);
-    selectedStart.setHours(0, 0, 0, 0);
-
-    if (candidateCheckout <= selectedStart) return true;
+    const checkInStr = formatDateOnlyLocal(checkIn);
+    if (dateStr <= checkInStr) return true;
 
     for (const blocked of blockedDates) {
-      const blockedStart = new Date(blocked.start_date);
-      const blockedEnd = new Date(blocked.end_date);
-
-      if (doesStayOverlapBlockedRange(selectedStart, candidateCheckout, blockedStart, blockedEnd)) {
+      if (doesStayOverlapBlockedRange(checkIn, date, blocked.start_date, blocked.end_date)) {
         return true;
       }
     }
@@ -778,19 +765,50 @@ export default function PropertyDetails() {
     return false;
   }, [checkIn, blockedDates, doesStayOverlapBlockedRange]);
 
+  const isMonthlyOnlyListing = useMemo(
+    () => Boolean(data?.monthly_only_listing) || (Boolean(data?.available_for_monthly_rental) && Number(data?.price_per_month || 0) > 0 && Number(data?.price_per_night || 0) <= 0),
+    [data?.monthly_only_listing, data?.available_for_monthly_rental, data?.price_per_month, data?.price_per_night]
+  );
+
   const isStayBlocked = useMemo(() => {
     if (!checkIn || !checkOut || blockedDates.length === 0) return false;
-    const selectedStart = new Date(checkIn);
-    const selectedEnd = new Date(checkOut);
     for (const blocked of blockedDates) {
-      const blockedStart = new Date(blocked.start_date);
-      const blockedEnd = new Date(blocked.end_date);
-      if (doesStayOverlapBlockedRange(selectedStart, selectedEnd, blockedStart, blockedEnd)) {
+      if (doesStayOverlapBlockedRange(checkIn, checkOut, blocked.start_date, blocked.end_date)) {
         return true;
       }
     }
     return false;
   }, [checkIn, checkOut, blockedDates, doesStayOverlapBlockedRange]);
+
+  // Auto-adjust default check-in date if it happens to be in a blocked range
+  useEffect(() => {
+    if (blockedDates.length === 0 || !checkIn || !checkOut) return;
+
+    if (isDateBlocked(checkIn) || isStayBlocked) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      for (let i = 1; i <= 180; i++) {
+        const candidateStart = new Date(today);
+        candidateStart.setDate(candidateStart.getDate() + i);
+        if (!isDateBlocked(candidateStart)) {
+          const candidateEnd = new Date(candidateStart);
+          candidateEnd.setDate(candidateEnd.getDate() + (isMonthlyOnlyListing ? 30 : 1));
+          let hasOverlap = false;
+          for (const blocked of blockedDates) {
+            if (doesStayOverlapBlockedRange(candidateStart, candidateEnd, blocked.start_date, blocked.end_date)) {
+              hasOverlap = true;
+              break;
+            }
+          }
+          if (!hasOverlap) {
+            setCheckIn(candidateStart);
+            setCheckOut(candidateEnd);
+            break;
+          }
+        }
+      }
+    }
+  }, [blockedDates, isDateBlocked, isStayBlocked, isMonthlyOnlyListing, doesStayOverlapBlockedRange]);
 
   // Check if selected dates overlap with blocked dates
   useEffect(() => {
@@ -850,11 +868,6 @@ export default function PropertyDetails() {
     const n = Math.ceil(ms / (1000 * 60 * 60 * 24));
     return Number.isFinite(n) && n > 0 ? n : 0;
   }, [checkIn, checkOut]);
-
-  const isMonthlyOnlyListing = useMemo(
-    () => Boolean(data?.monthly_only_listing) || (Boolean(data?.available_for_monthly_rental) && Number(data?.price_per_month || 0) > 0 && Number(data?.price_per_night || 0) <= 0),
-    [data?.monthly_only_listing, data?.available_for_monthly_rental, data?.price_per_month, data?.price_per_night]
-  );
 
   const stayUnits = useMemo(() => {
     const months = Math.max(1, Math.ceil(nights / 30));

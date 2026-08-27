@@ -8401,10 +8401,27 @@ export default function HostDashboard() {
                   </Select>
 
                   <div className="mt-3 space-y-2">
-                    <Label className="text-xs font-medium block">Sync selected accommodations</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-medium block">Sync selected accommodations</Label>
+                      {(properties || []).length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedCalendarPropertyIds.length === properties.length) {
+                              setSelectedCalendarPropertyIds(selectedCalendarPropertyId ? [selectedCalendarPropertyId] : []);
+                            } else {
+                              setSelectedCalendarPropertyIds(properties.map((p) => p.id));
+                            }
+                          }}
+                          className="text-[10px] text-primary hover:underline font-medium"
+                        >
+                          {selectedCalendarPropertyIds.length === properties.length ? "Deselect all" : "Select all"}
+                        </button>
+                      )}
+                    </div>
                     <div className="max-h-32 overflow-y-auto rounded border p-2 space-y-2">
                       {(properties || []).map((property) => (
-                        <label key={property.id} className="flex items-center gap-2 text-xs">
+                        <label key={property.id} className="flex items-center gap-2 text-xs cursor-pointer">
                           <Checkbox
                             checked={selectedCalendarPropertyIds.includes(property.id)}
                             onCheckedChange={(checked) => toggleCalendarPropertySelection(property.id, checked === true)}
@@ -8419,10 +8436,27 @@ export default function HostDashboard() {
                   </div>
 
                   <div className="mt-3 space-y-2">
-                    <Label className="text-xs font-medium block">Sync selected tours</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-medium block">Sync selected tours</Label>
+                      {(tours || []).length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedCalendarTourIds.length === tours.length) {
+                              setSelectedCalendarTourIds([]);
+                            } else {
+                              setSelectedCalendarTourIds(tours.map((t) => t.id));
+                            }
+                          }}
+                          className="text-[10px] text-primary hover:underline font-medium"
+                        >
+                          {selectedCalendarTourIds.length === tours.length ? "Deselect all" : "Select all"}
+                        </button>
+                      )}
+                    </div>
                     <div className="max-h-32 overflow-y-auto rounded border p-2 space-y-2">
                       {(tours || []).map((tour) => (
-                        <label key={tour.id} className="flex items-center gap-2 text-xs">
+                        <label key={tour.id} className="flex items-center gap-2 text-xs cursor-pointer">
                           <Checkbox
                             checked={selectedCalendarTourIds.includes(tour.id)}
                             onCheckedChange={(checked) => toggleCalendarTourSelection(tour.id, checked === true)}
