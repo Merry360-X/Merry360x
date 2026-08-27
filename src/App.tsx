@@ -64,6 +64,8 @@ const HelpCenter = lazy(() => import("./pages/HelpCenter"));
 const Announcements = lazy(() => import("./pages/Announcements"));
 const Stories = lazy(() => import("./pages/Stories"));
 const CreateStory = lazy(() => import("./pages/CreateStory"));
+const BecomeReferralPartner = lazy(() => import("./pages/BecomeReferralPartner"));
+const ReferralDashboard = lazy(() => import("./pages/ReferralDashboard"));
 const AffiliateSignup = lazy(() => import("./pages/AffiliateSignup"));
 const AffiliateDashboard = lazy(() => import("./pages/AffiliateDashboard"));
 const AffiliatePortal = lazy(() => import("./pages/AffiliatePortal"));
@@ -457,316 +459,320 @@ const App = () => (
       <PreferencesProvider>
         <RealtimeProvider>
           <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Suspense fallback={null}>
-              <GlobalLoadingIndicator />
-            </Suspense>
-            <ScrollToTop />
-            <Suspense fallback={null}>
-              <SupportCenterLauncher />
-            </Suspense>
-            <MomoGeoPopup />
-            <RouteSeoManager />
-            <WebAnalyticsManager />
-            <RoutePrefetch />
-            <Suspense fallback={<RouteLoadingFallback />}>
-            <RouteTransitionWrapper>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/auth/callback" element={<AuthCallback />} />
-              <Route path="/complete-profile" element={<Suspense fallback={<RouteLoadingFallback />}><CompleteProfile /></Suspense>} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/login" element={<AuthModeRedirect mode="login" />} />
-              <Route path="/signup" element={<AuthModeRedirect mode="signup" />} />
-              <Route path="/accommodations" element={<Accommodations />} />
-              <Route path="/stays" element={<Navigate to="/accommodations" replace />} />
-              <Route path="/tours" element={<Tours />} />
-              <Route path="/tours/:id" element={<TourDetails />} />
-              <Route path="/search" element={<SearchResults />} />
-              <Route path="/menu" element={<MobileMenuPage />} />
-              <Route path="/transport" element={<Transport />} />
-              <Route path="/services" element={<Navigate to="/" replace />} />
-              <Route path="/announcements" element={<Announcements />} />
-              <Route path="/stories" element={<Stories />} />
-              <Route
-                path="/create-story"
-                element={
-                  <RequireAuth>
-                    <CreateStory />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/host-dashboard"
-                element={
-                  <RequireRole allowed={["host"]}>
-                    <HostDashboard />
-                  </RequireRole>
-                }
-              />
-              <Route path="/host" element={<Navigate to="/host-dashboard" replace />} />
-              <Route path="/become-host" element={<BecomeHost />} />
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Suspense fallback={null}>
+                <GlobalLoadingIndicator />
+              </Suspense>
+              <ScrollToTop />
+              <Suspense fallback={null}>
+                <SupportCenterLauncher />
+              </Suspense>
+              <MomoGeoPopup />
+              <RouteSeoManager />
+              <WebAnalyticsManager />
+              <RoutePrefetch />
+              <Suspense fallback={<RouteLoadingFallback />}>
+                <RouteTransitionWrapper>
+                  <Routes>
+                    <Route path="/" element={<Index />} />
+                    <Route path="/auth" element={<Auth />} />
+                    <Route path="/auth/callback" element={<AuthCallback />} />
+                    <Route path="/complete-profile" element={<Suspense fallback={<RouteLoadingFallback />}><CompleteProfile /></Suspense>} />
+                    <Route path="/forgot-password" element={<ForgotPassword />} />
+                    <Route path="/reset-password" element={<ResetPassword />} />
+                    <Route path="/login" element={<AuthModeRedirect mode="login" />} />
+                    <Route path="/signup" element={<AuthModeRedirect mode="signup" />} />
+                    <Route path="/accommodations" element={<Accommodations />} />
+                    <Route path="/stays" element={<Navigate to="/accommodations" replace />} />
+                    <Route path="/tours" element={<Tours />} />
+                    <Route path="/tours/:id" element={<TourDetails />} />
+                    <Route path="/search" element={<SearchResults />} />
+                    <Route path="/menu" element={<MobileMenuPage />} />
+                    <Route path="/transport" element={<Transport />} />
+                    <Route path="/services" element={<Navigate to="/" replace />} />
+                    <Route path="/announcements" element={<Announcements />} />
+                    <Route path="/stories" element={<Stories />} />
+                    <Route
+                      path="/create-story"
+                      element={
+                        <RequireAuth>
+                          <CreateStory />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/host-dashboard"
+                      element={
+                        <RequireRole allowed={["host"]}>
+                          <HostDashboard />
+                        </RequireRole>
+                      }
+                    />
+                    <Route path="/host" element={<Navigate to="/host-dashboard" replace />} />
+                    <Route path="/become-host" element={<BecomeHost />} />
 
-              <Route
-                path="/create-tour"
-                element={
-                  <RequireAuth>
-                    <RequireRole allowed={["host"]}>
-                      <CreateTour />
-                    </RequireRole>
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/edit-tour/:id"
-                element={
-                  <RequireAuth>
-                    <RequireRole allowed={["host"]}>
-                      <CreateTour />
-                    </RequireRole>
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/edit-tour"
-                element={
-                  <RequireAuth>
-                    <RequireRole allowed={["host"]}>
-                      <CreateTour />
-                    </RequireRole>
-                  </RequireAuth>
-                }
-              />
+                    <Route
+                      path="/create-tour"
+                      element={
+                        <RequireAuth>
+                          <RequireRole allowed={["host"]}>
+                            <CreateTour />
+                          </RequireRole>
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/edit-tour/:id"
+                      element={
+                        <RequireAuth>
+                          <RequireRole allowed={["host"]}>
+                            <CreateTour />
+                          </RequireRole>
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/edit-tour"
+                      element={
+                        <RequireAuth>
+                          <RequireRole allowed={["host"]}>
+                            <CreateTour />
+                          </RequireRole>
+                        </RequireAuth>
+                      }
+                    />
 
-              <Route
-                path="/create-tour-package"
-                element={
-                  <RequireAuth>
-                    <CreateTourPackage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/create-tour-package/:id"
-                element={
-                  <RequireAuth>
-                    <CreateTourPackage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/edit-tour-package/:id"
-                element={
-                  <RequireAuth>
-                    <CreateTourPackage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/edit-tour-package"
-                element={
-                  <RequireAuth>
-                    <CreateTourPackage />
-                  </RequireAuth>
-                }
-              />
+                    <Route
+                      path="/create-tour-package"
+                      element={
+                        <RequireAuth>
+                          <CreateTourPackage />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/create-tour-package/:id"
+                      element={
+                        <RequireAuth>
+                          <CreateTourPackage />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/edit-tour-package/:id"
+                      element={
+                        <RequireAuth>
+                          <CreateTourPackage />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/edit-tour-package"
+                      element={
+                        <RequireAuth>
+                          <CreateTourPackage />
+                        </RequireAuth>
+                      }
+                    />
 
-              <Route
-                path="/create-transport"
-                element={
-                  <RequireAuth>
-                    <CreateTransport />
-                  </RequireAuth>
-                }
-              />
+                    <Route
+                      path="/create-transport"
+                      element={
+                        <RequireAuth>
+                          <CreateTransport />
+                        </RequireAuth>
+                      }
+                    />
 
-              <Route
-                path="/create-car-rental"
-                element={
-                  <RequireAuth>
-                    <RequireRole allowed={["host"]}>
-                      <CreateCarRental />
-                    </RequireRole>
-                  </RequireAuth>
-                }
-              />
+                    <Route
+                      path="/create-car-rental"
+                      element={
+                        <RequireAuth>
+                          <RequireRole allowed={["host"]}>
+                            <CreateCarRental />
+                          </RequireRole>
+                        </RequireAuth>
+                      }
+                    />
 
-              <Route
-                path="/create-airport-transfer"
-                element={
-                  <RequireAuth>
-                    <RequireRole allowed={["host"]}>
-                      <CreateAirportTransfer />
-                    </RequireRole>
-                  </RequireAuth>
-                }
-              />
+                    <Route
+                      path="/create-airport-transfer"
+                      element={
+                        <RequireAuth>
+                          <RequireRole allowed={["host"]}>
+                            <CreateAirportTransfer />
+                          </RequireRole>
+                        </RequireAuth>
+                      }
+                    />
 
-              <Route
-                path="/admin"
-                element={
-                  <RequireRole allowed={["admin"]}>
-                    <ErrorBoundary>
-                      <Suspense fallback={<RouteLoadingFallback />}>
-                        <AdminDashboard />
-                      </Suspense>
-                    </ErrorBoundary>
-                  </RequireRole>
-                }
-              />
-              <Route path="/admin-dashboard" element={<Navigate to="/admin" replace />} />
-              <Route
-                path="/admin/integrations"
-                element={
-                  <RequireRole allowed={["admin", "staff"]}>
-                    <AdminIntegrations />
-                  </RequireRole>
-                }
-              />
-              <Route
-                path="/financial-dashboard"
-                element={
-                  <RequireRole allowed={["financial_staff", "admin"]}>
-                    <Suspense fallback={<RouteLoadingFallback />}>
-                      <FinancialStaffDashboard />
-                    </Suspense>
-                  </RequireRole>
-                }
-              />
-              <Route path="/financial-staff-dashboard" element={<Navigate to="/financial-dashboard" replace />} />
-              <Route
-                path="/operations-dashboard"
-                element={
-                  <RequireRole allowed={["operations_staff", "admin"]}>
-                    <Suspense fallback={<RouteLoadingFallback />}>
-                      <OperationsStaffDashboard />
-                    </Suspense>
-                  </RequireRole>
-                }
-              />
-              <Route path="/operations-staff-dashboard" element={<Navigate to="/operations-dashboard" replace />} />
-              <Route
-                path="/customer-support-dashboard"
-                element={
-                  <RequireRole allowed={["customer_support", "admin"]}>
-                    <Suspense fallback={<RouteLoadingFallback />}>
-                      <CustomerSupportDashboard />
-                    </Suspense>
-                  </RequireRole>
-                }
-              />
-              <Route path="/customer-support" element={<Navigate to="/customer-support-dashboard" replace />} />
-              <Route
-                path="/bookings"
-                element={
-                  <RequireRole allowed={["admin", "operations_staff", "customer_support"]}>
-                    <BookingsPage />
-                  </RequireRole>
-                }
-              />
-              {/* Redirect old route to new one */}
-              <Route path="/support-dashboard" element={<Navigate to="/customer-support-dashboard" replace />} />
-              <Route path="/my-bookings" element={<MyBookings />} />
-              <Route
-                path="/post-booking"
-                element={
-                  <RequireAuth>
-                    <PostBookingRouteRedirect />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/resolution-center"
-                element={
-                  <RequireAuth>
-                    <PostBookingRouteRedirect />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/admin/post-booking"
-                element={
-                  <RequireRole allowed={["admin", "financial_staff", "operations_staff", "customer_support"]}>
-                    <AdminPostBooking />
-                  </RequireRole>
-                }
-              />
-              <Route path="/favorites" element={<Favorites />} />
-              <Route
-                path="/messages"
-                element={
-                  <RequireAuth>
-                    <Messages />
-                  </RequireAuth>
-                }
-              />
-              <Route path="/trip-cart" element={<TripCart />} />
-              <Route path="/checkout" element={<Checkout />} />
-              <Route path="/secure-card-handoff" element={<SecureCardHandoff />} />
-              <Route path="/payment-pending" element={<PaymentPending />} />
-              <Route path="/payment-failed" element={<PaymentFailed />} />
-              <Route path="/booking-success" element={<BookingSuccess />} />
-              <Route
-                path="/dashboard"
-                element={
-                  <RequireAuth>
-                    <Dashboard />
-                  </RequireAuth>
-                }
-              />
-              <Route path="/dashboard/watchlist" element={<Navigate to="/favorites" replace />} />
-              <Route path="/dashboard/trip-cart" element={<Navigate to="/trip-cart" replace />} />
-              <Route
-                path="/profile"
-                element={
-                  <RequireAuth>
-                    <Dashboard />
-                  </RequireAuth>
-                }
-              />
-              <Route path="/properties/:id" element={<PropertyDetails />} />
-              <Route path="/accommodations/:id" element={<PropertyDetails />} />
-              <Route path="/listing/:id" element={<PropertyDetails />} />
-              <Route path="/hosts/:id" element={<HostAbout />} />
-              <Route path="/hosts/:id/reviews" element={<HostReviews />} />
-              <Route path="/review/:token" element={<ReviewPage />} />
-              <Route path="/home" element={<Navigate to="/" replace />} />
-              <Route path="/about" element={<InfoPage kind="about" />} />
-              <Route path="/contact" element={<InfoPage kind="contact" />} />
-              <Route path="/help" element={<Navigate to="/help-center" replace />} />
-              <Route path="/safety" element={<InfoPage kind="safety" />} />
-              <Route path="/privacy" element={<InfoPage kind="privacy" />} />
-              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-              <Route path="/cookies" element={<InfoPage kind="cookies" />} />
-              <Route path="/terms" element={<InfoPage kind="terms" />} />
-              <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
-              <Route path="/eula" element={<Eula />} />
-              <Route path="/safety-guidelines" element={<SafetyGuidelines />} />
-              <Route path="/refund-policy" element={<RefundPolicy />} />
-              <Route path="/help-center" element={<HelpCenter />} />
-              <Route path="/connection-test" element={<ConnectionTest />} />
-              <Route path="/affiliate-signup" element={<AffiliateSignup />} />
-              <Route path="/affiliate-dashboard" element={<AffiliateDashboard />} />
-              <Route path="/affiliate" element={<RequireAuth><AffiliatePortal /></RequireAuth>} />
-              <Route path="/access-denied" element={<AccessDenied />} />
-              <Route path="/not-found" element={<NotFound />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-            </RouteTransitionWrapper>
-            </Suspense>
-            <Suspense fallback={null}>
-              <DatabaseConnectivityTest />
-            </Suspense>
-          </BrowserRouter>
-        </TooltipProvider>
-      </RealtimeProvider>
-    </PreferencesProvider>
-  </AuthProvider>
+                    <Route
+                      path="/admin"
+                      element={
+                        <RequireRole allowed={["admin"]}>
+                          <ErrorBoundary>
+                            <Suspense fallback={<RouteLoadingFallback />}>
+                              <AdminDashboard />
+                            </Suspense>
+                          </ErrorBoundary>
+                        </RequireRole>
+                      }
+                    />
+                    <Route path="/admin-dashboard" element={<Navigate to="/admin" replace />} />
+                    <Route
+                      path="/admin/integrations"
+                      element={
+                        <RequireRole allowed={["admin", "staff"]}>
+                          <AdminIntegrations />
+                        </RequireRole>
+                      }
+                    />
+                    <Route
+                      path="/financial-dashboard"
+                      element={
+                        <RequireRole allowed={["financial_staff", "admin"]}>
+                          <Suspense fallback={<RouteLoadingFallback />}>
+                            <FinancialStaffDashboard />
+                          </Suspense>
+                        </RequireRole>
+                      }
+                    />
+                    <Route path="/financial-staff-dashboard" element={<Navigate to="/financial-dashboard" replace />} />
+                    <Route
+                      path="/operations-dashboard"
+                      element={
+                        <RequireRole allowed={["operations_staff", "admin"]}>
+                          <Suspense fallback={<RouteLoadingFallback />}>
+                            <OperationsStaffDashboard />
+                          </Suspense>
+                        </RequireRole>
+                      }
+                    />
+                    <Route path="/operations-staff-dashboard" element={<Navigate to="/operations-dashboard" replace />} />
+                    <Route
+                      path="/customer-support-dashboard"
+                      element={
+                        <RequireRole allowed={["customer_support", "admin"]}>
+                          <Suspense fallback={<RouteLoadingFallback />}>
+                            <CustomerSupportDashboard />
+                          </Suspense>
+                        </RequireRole>
+                      }
+                    />
+                    <Route path="/customer-support" element={<Navigate to="/customer-support-dashboard" replace />} />
+                    <Route
+                      path="/bookings"
+                      element={
+                        <RequireRole allowed={["admin", "operations_staff", "customer_support"]}>
+                          <BookingsPage />
+                        </RequireRole>
+                      }
+                    />
+                    {/* Redirect old route to new one */}
+                    <Route path="/support-dashboard" element={<Navigate to="/customer-support-dashboard" replace />} />
+                    <Route path="/my-bookings" element={<MyBookings />} />
+                    <Route
+                      path="/post-booking"
+                      element={
+                        <RequireAuth>
+                          <PostBookingRouteRedirect />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/resolution-center"
+                      element={
+                        <RequireAuth>
+                          <PostBookingRouteRedirect />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/admin/post-booking"
+                      element={
+                        <RequireRole allowed={["admin", "financial_staff", "operations_staff", "customer_support"]}>
+                          <AdminPostBooking />
+                        </RequireRole>
+                      }
+                    />
+                    <Route path="/favorites" element={<Favorites />} />
+                    <Route
+                      path="/messages"
+                      element={
+                        <RequireAuth>
+                          <Messages />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route path="/trip-cart" element={<TripCart />} />
+                    <Route path="/checkout" element={<Checkout />} />
+                    <Route path="/secure-card-handoff" element={<SecureCardHandoff />} />
+                    <Route path="/payment-pending" element={<PaymentPending />} />
+                    <Route path="/payment-failed" element={<PaymentFailed />} />
+                    <Route path="/booking-success" element={<BookingSuccess />} />
+                    <Route
+                      path="/dashboard"
+                      element={
+                        <RequireAuth>
+                          <Dashboard />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route path="/dashboard/watchlist" element={<Navigate to="/favorites" replace />} />
+                    <Route path="/dashboard/trip-cart" element={<Navigate to="/trip-cart" replace />} />
+                    <Route
+                      path="/profile"
+                      element={
+                        <RequireAuth>
+                          <Dashboard />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route path="/properties/:id" element={<PropertyDetails />} />
+                    <Route path="/accommodations/:id" element={<PropertyDetails />} />
+                    <Route path="/listing/:id" element={<PropertyDetails />} />
+                    <Route path="/hosts/:id" element={<HostAbout />} />
+                    <Route path="/hosts/:id/reviews" element={<HostReviews />} />
+                    <Route path="/review/:token" element={<ReviewPage />} />
+                    <Route path="/home" element={<Navigate to="/" replace />} />
+                    <Route path="/about" element={<InfoPage kind="about" />} />
+                    <Route path="/contact" element={<InfoPage kind="contact" />} />
+                    <Route path="/help" element={<Navigate to="/help-center" replace />} />
+                    <Route path="/safety" element={<InfoPage kind="safety" />} />
+                    <Route path="/privacy" element={<InfoPage kind="privacy" />} />
+                    <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                    <Route path="/cookies" element={<InfoPage kind="cookies" />} />
+                    <Route path="/terms" element={<InfoPage kind="terms" />} />
+                    <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
+                    <Route path="/eula" element={<Eula />} />
+                    <Route path="/safety-guidelines" element={<SafetyGuidelines />} />
+                    <Route path="/refund-policy" element={<RefundPolicy />} />
+                    <Route path="/help-center" element={<HelpCenter />} />
+                    <Route path="/connection-test" element={<ConnectionTest />} />
+                    <Route path="/become-referral" element={<BecomeReferralPartner />} />
+                    <Route path="/referral-signup" element={<Navigate to="/become-referral" replace />} />
+                    <Route path="/referral-dashboard" element={<RequireAuth><ReferralDashboard /></RequireAuth>} />
+                    <Route path="/referral" element={<RequireAuth><ReferralDashboard /></RequireAuth>} />
+                    <Route path="/affiliate-signup" element={<Navigate to="/become-referral" replace />} />
+                    <Route path="/affiliate-dashboard" element={<Navigate to="/referral-dashboard" replace />} />
+                    <Route path="/affiliate" element={<Navigate to="/referral-dashboard" replace />} />
+                    <Route path="/access-denied" element={<AccessDenied />} />
+                    <Route path="/not-found" element={<NotFound />} />
+                    {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </RouteTransitionWrapper>
+              </Suspense>
+              <Suspense fallback={null}>
+                <DatabaseConnectivityTest />
+              </Suspense>
+            </BrowserRouter>
+          </TooltipProvider>
+        </RealtimeProvider>
+      </PreferencesProvider>
+    </AuthProvider>
   </QueryClientProvider>
 );
 

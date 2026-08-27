@@ -11,7 +11,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { logError, uiErrorMessage } from "@/lib/ui-errors";
 
-type AppRole = "guest" | "host" | "staff" | "admin" | "certificate_override";
+type AppRole = "guest" | "host" | "staff" | "admin" | "referral" | "certificate_override";
 
 type AdminUserRow = {
   user_id: string;
@@ -253,6 +253,14 @@ export default function AdminRoles() {
                       </Button>
                       <Button
                         variant="outline"
+                        onClick={() => assignRole(p.user_id, "referral")}
+                        disabled={p.roles.includes("referral")}
+                        title={!isAdmin ? "Only admins can grant referral" : undefined}
+                      >
+                        Add referral
+                      </Button>
+                      <Button
+                        variant="outline"
                         onClick={() => assignRole(p.user_id, "certificate_override")}
                         disabled={p.roles.includes("certificate_override")}
                         title={!isAdmin ? "Only admins can grant certificate override" : undefined}
@@ -280,6 +288,13 @@ export default function AdminRoles() {
                         disabled={!p.roles.includes("admin")}
                       >
                         Remove admin
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => removeRole(p.user_id, "referral")}
+                        disabled={!p.roles.includes("referral")}
+                      >
+                        Remove referral
                       </Button>
                       <Button
                         variant="outline"

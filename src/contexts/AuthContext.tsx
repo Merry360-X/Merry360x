@@ -18,6 +18,7 @@ type AuthContextType = {
   isFinancialStaff: boolean;
   isOperationsStaff: boolean;
   isCustomerSupport: boolean;
+  isReferral: boolean;
   signUp: (
     email: string,
     password: string,
@@ -102,7 +103,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Note: 'staff' is deprecated, use specific roles instead
       // Accept both 'user' and 'guest' for backward compatibility
       const uniq = Array.from(new Set(normalized)).filter((r) =>
-        ["user", "guest", "host", "admin", "financial_staff", "operations_staff", "customer_support", "certificate_override"].includes(r)
+        ["user", "guest", "host", "admin", "financial_staff", "operations_staff", "customer_support", "certificate_override", "referral"].includes(r)
       );
 
       // If auth epoch changed (e.g., user signed out) while fetching, ignore results.
@@ -145,6 +146,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const isFinancialStaff = useMemo(() => roles.includes("financial_staff"), [roles]);
   const isOperationsStaff = useMemo(() => roles.includes("operations_staff"), [roles]);
   const isCustomerSupport = useMemo(() => roles.includes("customer_support"), [roles]);
+  const isReferral = useMemo(() => roles.includes("referral"), [roles]);
 
   useEffect(() => {
     let mounted = true;
@@ -452,6 +454,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isFinancialStaff,
         isOperationsStaff,
         isCustomerSupport,
+        isReferral,
         signUp,
         signIn,
         signOut,

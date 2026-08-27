@@ -19,6 +19,7 @@ import {
   DollarSign,
   Settings,
   MessageSquare,
+  Share2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
@@ -98,7 +99,7 @@ const TripCartIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
 const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, signOut, isHost, isAdmin, isStaff, isFinancialStaff, isOperationsStaff, isCustomerSupport } = useAuth();
+  const { user, signOut, isHost, isAdmin, isStaff, isFinancialStaff, isOperationsStaff, isCustomerSupport, isReferral } = useAuth();
   const { guestCart } = useTripCart();
   const [mobileCurrencyMenuOpen, setMobileCurrencyMenuOpen] = useState(false);
   const [decisionSeenAt, setDecisionSeenAt] = useState<string>("");
@@ -686,6 +687,10 @@ const Navbar = () => {
                       {t("actions.becomeHost")}
                     </DropdownMenuItem>
                   )}
+                  <DropdownMenuItem onClick={() => navigate(isReferral ? "/referral-dashboard" : "/become-referral")}>
+                    <Share2 className="w-4 h-4 mr-2 text-rose-500" />
+                    {isReferral ? "Referral Dashboard" : "Partner Referral Program"}
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut}>
                     <LogOut className="w-4 h-4 mr-2" />
@@ -975,6 +980,20 @@ const Navbar = () => {
                         <Building2 className="w-4 h-4" /> {t("actions.becomeHost")}
                       </Button>
                     ) : null}
+
+                    {user && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full justify-start gap-2 min-[560px]:col-span-2"
+                        onClick={() => {
+                          navigate(isReferral ? "/referral-dashboard" : "/become-referral");
+                        }}
+                      >
+                        <Share2 className="w-4 h-4 text-rose-500" />
+                        {isReferral ? "Referral Dashboard" : "Partner Referral Program"}
+                      </Button>
+                    )}
 
                     {isAdmin ? (
                       <Button

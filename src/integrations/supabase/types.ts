@@ -277,11 +277,19 @@ export type Database = {
           commission_rate: number | null
           company_name: string | null
           created_at: string
+          full_name: string | null
           id: string
           paid_earnings: number | null
+          payout_account_name: string | null
+          payout_account_number: string | null
+          payout_bank_name: string | null
+          payout_method: string | null
+          payout_phone: string | null
           pending_earnings: number | null
+          phone: string | null
           referral_code: string
           status: string | null
+          terms_accepted_at: string | null
           total_earnings: number | null
           total_referrals: number | null
           updated_at: string | null
@@ -294,11 +302,19 @@ export type Database = {
           commission_rate?: number | null
           company_name?: string | null
           created_at?: string
+          full_name?: string | null
           id?: string
           paid_earnings?: number | null
+          payout_account_name?: string | null
+          payout_account_number?: string | null
+          payout_bank_name?: string | null
+          payout_method?: string | null
+          payout_phone?: string | null
           pending_earnings?: number | null
+          phone?: string | null
           referral_code: string
           status?: string | null
+          terms_accepted_at?: string | null
           total_earnings?: number | null
           total_referrals?: number | null
           updated_at?: string | null
@@ -311,11 +327,19 @@ export type Database = {
           commission_rate?: number | null
           company_name?: string | null
           created_at?: string
+          full_name?: string | null
           id?: string
           paid_earnings?: number | null
+          payout_account_name?: string | null
+          payout_account_number?: string | null
+          payout_bank_name?: string | null
+          payout_method?: string | null
+          payout_phone?: string | null
           pending_earnings?: number | null
+          phone?: string | null
           referral_code?: string
           status?: string | null
+          terms_accepted_at?: string | null
           total_earnings?: number | null
           total_referrals?: number | null
           updated_at?: string | null
@@ -2583,6 +2607,7 @@ export type Database = {
         | "financial_staff"
         | "operations_staff"
         | "customer_support"
+        | "referral"
       application_status: "pending" | "approved" | "rejected"
       booking_status:
         | "pending"
@@ -2749,6 +2774,7 @@ export const Constants = {
         "financial_staff",
         "operations_staff",
         "customer_support",
+        "referral",
       ],
       application_status: ["pending", "approved", "rejected"],
       booking_status: [

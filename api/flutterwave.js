@@ -377,6 +377,7 @@ async function createBookingsForPaidCheckout(supabase, checkoutData) {
         currency: item.calculated_price_currency || item.currency || checkoutData.currency || "RWF",
         payment_status: "paid",
         payment_method: "flutterwave",
+        referral_code: checkoutData.referral_code || checkoutData.metadata?.referral_code || null,
         guests: bookingDetails?.guests || item.metadata?.guests || 1,
         review_token: crypto.randomUUID(),
       };

@@ -16,28 +16,8 @@ import TourPromoCard from "@/components/TourPromoCard";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getTourPricingModel } from "@/lib/tour-pricing";
-import { ArrowRight, Bell, CheckCircle2, ChevronLeft, ChevronRight, Mail, Plus, Sparkles, TrendingUp, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, TrendingUp, X } from "lucide-react";
 import heroVideo from "@/assets/merry.mp4";
-
-const HOME_UPDATES_DISMISS_KEY = "home-updates-popup-dismissed-at";
-
-const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-
-const readDismissedAt = (): number => {
-  try {
-    return Number(window.localStorage.getItem(HOME_UPDATES_DISMISS_KEY) || "0");
-  } catch {
-    return 0;
-  }
-};
-
-const persistDismissedAt = () => {
-  try {
-    window.localStorage.setItem(HOME_UPDATES_DISMISS_KEY, String(Date.now()));
-  } catch {
-    // Ignore storage errors so Home always remains accessible.
-  }
-};
 
 type HomeTour = {
   id: string;
@@ -98,10 +78,6 @@ const Index = () => {
   const [activeStoryModalIndex, setActiveStoryModalIndex] = useState<number | null>(null);
   const [stayCityInput, setStayCityInput] = useState("");
   const [stayCity, setStayCity] = useState("");
-  const [showUpdatesPopup, setShowUpdatesPopup] = useState(false);
-  const [newsletterEmail, setNewsletterEmail] = useState("");
-  const [newsletterError, setNewsletterError] = useState<string | null>(null);
-  const [isSubscribed, setIsSubscribed] = useState(false);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -109,35 +85,6 @@ const Index = () => {
     }, 250);
     return () => window.clearTimeout(handle);
   }, [stayCityInput]);
-
-  useEffect(() => {
-    const dismissedAt = readDismissedAt();
-    const oneDayMs = 24 * 60 * 60 * 1000;
-    if (dismissedAt > 0 && Date.now() - dismissedAt < oneDayMs) return;
-
-    const timer = window.setTimeout(() => {
-      setShowUpdatesPopup(true);
-    }, 900);
-
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  const closeUpdatesPopup = () => {
-    setShowUpdatesPopup(false);
-    persistDismissedAt();
-  };
-
-  const handleNewsletterSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!isValidEmail(newsletterEmail)) {
-      setNewsletterError("Enter a valid email address.");
-      return;
-    }
-
-    setNewsletterError(null);
-    setIsSubscribed(true);
-    setNewsletterEmail("");
-  };
 
   const { data: popularTours = [], isLoading: isPopularToursLoading } = useQuery({
     queryKey: ["home-popular-tours"],
@@ -428,13 +375,13 @@ const Index = () => {
               {/* Referral CTA */}
               <div className="mt-6 md:mt-8 flex justify-center">
                 <Button
-                  onClick={() => navigate('/affiliate-signup')}
+                  onClick={() => navigate('/become-referral')}
                   variant="outline"
                   size="lg"
                   className="w-full max-w-[22rem] sm:w-auto bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 hover:text-white transition-all shadow-lg"
                 >
                   <TrendingUp className="w-5 h-5 mr-2" />
-                  Refer an Operator & Earn 10%
+                  Become a Partner & Earn 10%
                 </Button>
               </div>
             </div>
@@ -541,89 +488,6 @@ const Index = () => {
       <HostingCTA />
 
       <Footer />
-
-      <Dialog open={showUpdatesPopup} onOpenChange={(open) => !open && closeUpdatesPopup()}>
-        <DialogContent className="w-[calc(100vw-1rem)] max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-0 shadow-[0_30px_90px_rgba(15,23,42,0.18)]">
-          <div className="relative bg-white p-4 sm:p-6">
-            <div className="mb-4 flex items-start justify-between gap-3 border-b border-slate-200 pb-4">
-              <div className="flex items-start gap-3">
-                <div className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-500 shadow-sm">
-                  <Sparkles className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Travel Insider Updates</h3>
-                  <p className="mt-1 text-sm text-slate-600">Exclusive offers, fresh stories, and release notes in one digest.</p>
-                </div>
-              </div>
-              <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-500">
-                Weekly
-              </span>
-            </div>
-
-            <div className="mb-4 grid grid-cols-2 gap-2">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px] text-slate-600">Deals before public launch</div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px] text-slate-600">Stories from local hosts</div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-start gap-2">
-                <Mail className="mt-0.5 h-4 w-4 text-rose-500" />
-                <div>
-                  <p className="text-sm font-medium text-slate-900">Newsletter</p>
-                  <p className="text-xs text-slate-600">Receive curated deals and destination highlights.</p>
-                </div>
-              </div>
-
-              {isSubscribed ? (
-                <div className="flex items-center gap-2 rounded-md bg-emerald-50 px-2.5 py-2 text-xs font-medium text-emerald-700">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Thanks for subscribing.
-                </div>
-              ) : (
-                <form onSubmit={handleNewsletterSubmit} className="space-y-2">
-                  <label htmlFor="home-newsletter-email" className="sr-only">Email address</label>
-                  <input
-                    id="home-newsletter-email"
-                    type="email"
-                    value={newsletterEmail}
-                    onChange={(event) => {
-                      setNewsletterEmail(event.target.value);
-                      if (newsletterError) setNewsletterError(null);
-                    }}
-                    placeholder="you@example.com"
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-rose-400"
-                    autoComplete="email"
-                    required
-                  />
-                  {newsletterError && <p className="text-xs text-destructive">{newsletterError}</p>}
-                  <Button type="submit" className="h-10 w-full justify-between rounded-xl bg-rose-500 px-4 text-white hover:bg-rose-600">
-                    <span>Join newsletter</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </form>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                closeUpdatesPopup();
-                navigate("/announcements");
-              }}
-              className="mt-3 flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left transition-colors hover:bg-slate-100"
-            >
-              <span className="flex items-start gap-3">
-                <Bell className="mt-0.5 h-4 w-4 text-rose-500" />
-                <span>
-                  <span className="block text-sm font-medium text-slate-900">Announcements</span>
-                  <span className="block text-xs text-slate-600">Open the latest product and community updates.</span>
-                </span>
-              </span>
-              <ArrowRight className="h-4 w-4 text-slate-500" />
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={activeStoryModalIndex !== null} onOpenChange={(open) => !open && closeStoryModal()}>
         <DialogContent className="max-w-xl p-0 overflow-hidden border-border/40 bg-black">

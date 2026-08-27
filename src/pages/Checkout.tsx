@@ -713,6 +713,12 @@ export default function CheckoutNew() {
   const [discountLoading, setDiscountLoading] = useState(false);
   const [discountError, setDiscountError] = useState<string | null>(null);
 
+  // Referral Code (Optional)
+  const [appliedReferral, setAppliedReferral] = useState<any>(null);
+  const [referralCodeInput, setReferralCodeInput] = useState("");
+  const [referralLoading, setReferralLoading] = useState(false);
+  const [referralError, setReferralError] = useState<string | null>(null);
+
   const clearCheckoutDraft = () => {
     localStorage.removeItem(checkoutDraftKey);
   };
@@ -1029,6 +1035,27 @@ export default function CheckoutNew() {
       } catch {
         localStorage.removeItem("applied_discount");
       }
+    }
+
+    // Load referral code from URL (?ref=... or ?referralCode=...) or localStorage
+    const refParam = searchParams.get("ref") || searchParams.get("referralCode") || searchParams.get("referral");
+    const savedRef = localStorage.getItem("merry_referral_code");
+    const targetRef = refParam || savedRef;
+
+    if (targetRef) {
+      const normalizedRef = targetRef.trim().toUpperCase();
+      setReferralCodeInput(normalizedRef);
+      (supabase
+        .from("affiliates")
+        .select("id, referral_code, status, commission_rate, full_name, company_name")
+        .eq("status", "active")
+        .ilike("referral_code", normalizedRef)
+        .maybeSingle() as any)
+        .then(({ data }: any) => {
+          if (cancelled || !data) return;
+          setAppliedReferral(data);
+          localStorage.setItem("merry_referral_code", data.referral_code);
+        });
     }
 
     return () => {
@@ -1590,6 +1617,52 @@ export default function CheckoutNew() {
     setAppliedDiscount(null);
     localStorage.removeItem("applied_discount");
     toast({ title: "Discount removed" });
+  };
+
+  // Apply referral code
+  const handleApplyReferral = async () => {
+    if (!referralCodeInput.trim()) {
+      setReferralError("Please enter a referral code");
+      return;
+    }
+
+    setReferralLoading(true);
+    setReferralError(null);
+
+    try {
+      const cleanRef = referralCodeInput.trim().toUpperCase();
+      const { data, error } = await (supabase
+        .from("affiliates")
+        .select("id, referral_code, status, commission_rate, full_name, company_name")
+        .eq("status", "active")
+        .ilike("referral_code", cleanRef)
+        .maybeSingle() as any);
+
+      if (error || !data) {
+        setReferralError("Invalid or inactive referral code");
+        return;
+      }
+
+      setAppliedReferral(data);
+      setReferralCodeInput(data.referral_code);
+      localStorage.setItem("merry_referral_code", data.referral_code);
+      toast({
+        title: "Referral code applied!",
+        description: `Partner code ${data.referral_code} linked to your booking.`,
+      });
+    } catch (err) {
+      console.error("Referral verification error:", err);
+      setReferralError("Failed to verify referral code");
+    } finally {
+      setReferralLoading(false);
+    }
+  };
+
+  const handleRemoveReferral = () => {
+    setAppliedReferral(null);
+    setReferralCodeInput("");
+    localStorage.removeItem("merry_referral_code");
+    toast({ title: "Referral code removed" });
   };
 
   // Check if payment method is a mobile money method (not card or bank)
@@ -2159,6 +2232,7 @@ export default function CheckoutNew() {
           discount_code: appliedDiscount?.code || null,
           discount_amount: discount,
           discount_currency: displayCurrency,
+          referral_code: appliedReferral?.referral_code || (referralCodeInput.trim() ? referralCodeInput.trim().toUpperCase() : null),
           payment_type: paymentType,
           total_participants: hasGroupBooking ? tourParticipants : 1,
           group_total: hasGroupBooking ? total : null,
@@ -2238,6 +2312,7 @@ export default function CheckoutNew() {
             payment_status: 'pending',
             payment_method: 'bank_transfer',
             special_requests: specialRequests,
+            referral_code: appliedReferral?.referral_code || (referralCodeInput.trim() ? referralCodeInput.trim().toUpperCase() : null),
             guest_name: formData.fullName || null,
             guest_email: formData.email || null,
             guest_phone: fullPhone || normalizedPhone,
@@ -3610,6 +3685,62 @@ export default function CheckoutNew() {
                     </div>
                     {discountError && (
                       <p className="text-xs text-red-500">{discountError}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Referral Code (Optional) */}
+              <div className="border-t pt-4 pb-2">
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                  Referral Code <span className="font-normal text-slate-400 normal-case">(Optional)</span>
+                </label>
+                {appliedReferral ? (
+                  <div className="flex items-center justify-between bg-rose-50 dark:bg-rose-950/30 p-3 rounded-lg border border-rose-200">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-rose-500" />
+                      <span className="text-sm font-semibold text-rose-700 dark:text-rose-300 font-mono">
+                        {appliedReferral.referral_code}
+                      </span>
+                      <span className="text-xs text-rose-600 dark:text-rose-400">
+                        (Partner applied)
+                      </span>
+                    </div>
+                    <button
+                      onClick={handleRemoveReferral}
+                      className="text-red-500 hover:text-red-600 text-xs font-medium"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Input
+                        value={referralCodeInput}
+                        onChange={(e) => {
+                          setReferralCodeInput(e.target.value.toUpperCase());
+                          setReferralError(null);
+                        }}
+                        placeholder="e.g. PARTNER10"
+                        className="flex-1 h-10 text-sm uppercase font-mono"
+                      />
+                      <Button
+                        onClick={handleApplyReferral}
+                        variant="outline"
+                        size="sm"
+                        disabled={referralLoading || !referralCodeInput.trim()}
+                        className="h-10 px-4 w-full sm:w-auto"
+                      >
+                        {referralLoading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          "Apply"
+                        )}
+                      </Button>
+                    </div>
+                    {referralError && (
+                      <p className="text-xs text-red-500">{referralError}</p>
                     )}
                   </div>
                 )}

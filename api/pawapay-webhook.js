@@ -1049,6 +1049,7 @@ export default async function handler(req, res) {
             currency: item.calculated_price_currency || item.currency || 'USD',
             payment_status: 'paid',
             payment_method: 'mobile_money',
+            referral_code: checkout.referral_code || checkout.metadata?.referral_code || null,
             guests: bookingDetails?.guests || item.metadata?.guests || 1,
             review_token: crypto.randomUUID(),
           };
