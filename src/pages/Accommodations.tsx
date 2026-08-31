@@ -729,7 +729,7 @@ const Accommodations = () => {
         <div className="mb-8">
           <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2">{t("accommodations.title")}</h1>
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-muted-foreground">{t("accommodations.subtitle")}</p>
+            {/* <p className="text-muted-foreground">{t("accommodations.subtitle")}</p> */}
             {monthlyFilterMode !== "all" ? (
               <button
                 type="button"
