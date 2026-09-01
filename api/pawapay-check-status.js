@@ -58,9 +58,494 @@ function buildPayoutErrorMessage(payoutData) {
   );
 }
 
+function formatDate(dateStr) {
+  if (!dateStr) return "N/A";
+  const date = new Date(dateStr);
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function formatDateTime(dateStr, timeStr) {
+  if (!dateStr) return null;
+  try {
+    const formatted = formatDate(dateStr);
+    if (timeStr) {
+      return `${formatted} at ${String(timeStr).trim()}`;
+    }
+    return formatted;
+  } catch {
+    return String(dateStr);
+  }
+}
+
 function formatMoneyRwf(amount) {
   const num = Number(amount || 0);
   return `${Math.round(num).toLocaleString("en-US")} RWF`;
+}
+
+function getServiceTypeFromItem(itemType) {
+  if (itemType === "property") return "accommodation";
+  if (itemType === "tour" || itemType === "tour_package") return "tour";
+  return "transport";
+}
+
+function getFeePercentsForItem(itemType) {
+  const serviceType = getServiceTypeFromItem(itemType);
+  if (serviceType === "accommodation") {
+    return { guestFeePercent: 10, hostFeePercent: 3 };
+  }
+  if (serviceType === "tour") {
+    return { guestFeePercent: 0, hostFeePercent: 10 };
+  }
+  return { guestFeePercent: 5, hostFeePercent: 7 };
+}
+
+function computeHostReceivesAmount(item, booking) {
+  const itemHostEarnings = Number(item?.host_earnings_amount);
+  if (Number.isFinite(itemHostEarnings) && itemHostEarnings >= 0) {
+    return itemHostEarnings;
+  }
+
+  const bookingTotal = Number(booking?.total_price);
+  const guestPaid = Number(item?.calculated_price);
+  const guestPaidAmount = Number.isFinite(guestPaid) && guestPaid > 0
+    ? guestPaid
+    : (Number.isFinite(bookingTotal) && bookingTotal > 0 ? bookingTotal : 0);
+
+  const { guestFeePercent, hostFeePercent } = getFeePercentsForItem(item?.item_type);
+  const baseAmount = guestPaidAmount / (1 + (guestFeePercent / 100));
+  const hostFee = (baseAmount * hostFeePercent) / 100;
+  return Math.max(0, baseAmount - hostFee);
+}
+
+function generateConfirmationEmail(checkout, items, bookingIds, reviewTokens) {
+  const guestName = checkout.name || checkout.metadata?.guest_info?.name || "Guest";
+  const totalAmount = formatMoney(checkout.total_amount, checkout.currency);
+  const receiptNumber = `MRY-${Date.now().toString(36).toUpperCase()}`;
+  const isMultiItem = items && items.length > 1;
+
+  const bookingDate = checkout.created_at ? new Date(checkout.created_at) : new Date();
+  const bookingDateFormatted = bookingDate.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  const firstItem = items && items[0];
+  const listingName = isMultiItem
+    ? items.map((i) => i.title || i.name || "Item").filter(Boolean).join(", ") || "Multiple Bookings"
+    : (firstItem?.title || firstItem?.name || checkout.metadata?.item_name || checkout.title || "Experience");
+
+  const checkInDate = checkout.metadata?.booking_details?.check_in || firstItem?.metadata?.check_in || firstItem?.check_in || checkout.metadata?.check_in;
+  const checkInTime = checkout.metadata?.booking_details?.check_in_time || firstItem?.metadata?.check_in_time || firstItem?.check_in_time || checkout.metadata?.booking_details?.pickup_time || firstItem?.metadata?.pickup_time || checkout.metadata?.check_in_time;
+  const checkInFormatted = formatDateTime(checkInDate, checkInTime);
+
+  const checkOutDate = checkout.metadata?.booking_details?.check_out || firstItem?.metadata?.check_out || firstItem?.check_out || checkout.metadata?.check_out;
+  const checkOutTime = checkout.metadata?.booking_details?.check_out_time || firstItem?.metadata?.check_out_time || firstItem?.check_out_time || checkout.metadata?.booking_details?.dropoff_time || firstItem?.metadata?.dropoff_time || checkout.metadata?.check_out_time;
+  const checkOutFormatted = formatDateTime(checkOutDate, checkOutTime);
+
+  const singleToken = Array.isArray(reviewTokens) && reviewTokens.length === 1 ? reviewTokens[0]?.review_token : null;
+  const reviewUrl = singleToken
+    ? `https://merry360x.com/review/${singleToken}`
+    : `https://merry360x.com/my-bookings`;
+
+  const itemsHtml = isMultiItem
+    ? `<div style="margin-bottom:12px;">${items
+        .map((item) => {
+          const itemPrice = formatMoney(item.calculated_price || item.price, item.calculated_price_currency || item.currency || "USD");
+          const itemTitle = item.title || item.name || "Item";
+          return `<p style="margin:0 0 6px;color:#374151;font-size:14px;">• ${escapeHtml(itemTitle)} — ${escapeHtml(itemPrice)}</p>`;
+        })
+        .join("")}</div>`
+    : "";
+
+  const stars = [1, 2, 3, 4, 5]
+    .map((star) => `<a href="${reviewUrl}${reviewUrl.includes("?") ? "&" : "?"}rating=${star}" style="display:inline-block;text-decoration:none;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;margin-right:6px;color:#111827;font-size:13px;">${"★".repeat(star)}</a>`)
+    .join("");
+
+  const detailsRows = [
+    { label: "Confirmation Code", value: `<span style="font-family:monospace;font-weight:700;">${escapeHtml(receiptNumber)}</span>` },
+    { label: "Guest", value: escapeHtml(guestName) },
+    { label: "Listing Name", value: `<strong>${escapeHtml(listingName)}</strong>` },
+    { label: "Booking Date", value: escapeHtml(bookingDateFormatted) },
+  ];
+
+  if (checkInFormatted) {
+    detailsRows.push({ label: "Check-in / Start", value: escapeHtml(checkInFormatted) });
+  }
+
+  if (checkOutFormatted) {
+    detailsRows.push({ label: "Check-out / End", value: escapeHtml(checkOutFormatted) });
+  }
+
+  detailsRows.push({ label: "Amount Paid", value: `<strong>${escapeHtml(totalAmount)}</strong>` });
+  detailsRows.push({ label: "Status", value: `<span style="display:inline-block;background:#dcfce7;color:#166534;padding:2px 8px;border-radius:999px;font-weight:600;font-size:12px;">Confirmed</span>` });
+
+  if (isMultiItem) {
+    detailsRows.push({ label: "Bookings", value: escapeHtml(String(Array.isArray(bookingIds) ? bookingIds.length : items.length)) });
+  }
+
+  const details = keyValueRows(detailsRows);
+
+  return renderMinimalEmail({
+    eyebrow: "Booking Confirmation",
+    title: "Booking confirmed",
+    subtitle: "Your payment was successful and your booking is complete.",
+    bodyHtml: `${itemsHtml}${details}<div style="margin-top:14px;"><p style="margin:0 0 8px;color:#6b7280;font-size:12px;">Rate your experience:</p>${stars}</div>`,
+    ctaText: "View My Bookings",
+    ctaUrl: "https://merry360x.com/my-bookings",
+  });
+}
+
+function generateReceiptPDF(checkout, items, bookingIds) {
+  const guestName = checkout.name || checkout.metadata?.guest_info?.name || "Guest";
+  const guestEmail = checkout.email || "";
+  const guestPhone = checkout.phone || checkout.phone_number || "";
+  const totalAmount = formatMoney(checkout.total_amount, checkout.currency);
+  const bookingDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const receiptNumber = `MRY-${Date.now().toString(36).toUpperCase()}`;
+  const bookingDetails = checkout.metadata?.booking_details || {};
+
+  const receiptHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Receipt - ${receiptNumber}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1f2937; padding: 40px; max-width: 600px; margin: 0 auto; }
+    .header { text-align: center; border-bottom: 2px solid #dc2626; padding-bottom: 24px; margin-bottom: 24px; }
+    .logo { font-size: 28px; font-weight: bold; color: #dc2626; }
+    .receipt-title { font-size: 12px; color: #6b7280; margin-top: 8px; text-transform: uppercase; letter-spacing: 2px; }
+    .receipt-number { font-size: 16px; font-weight: 600; margin-top: 4px; }
+    .section { margin-bottom: 24px; }
+    .section-title { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+    .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
+    .row:last-child { border-bottom: none; }
+    .label { color: #6b7280; }
+    .value { font-weight: 500; text-align: right; }
+    .total-row { background: #f9fafb; padding: 12px; border-radius: 8px; margin-top: 16px; }
+    .total-label { font-size: 14px; color: #1f2937; }
+    .total-value { font-size: 20px; font-weight: 700; color: #dc2626; }
+    .paid-badge { background: #dcfce7; color: #166534; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-block; }
+    .footer { text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e5e7eb; }
+    .footer p { font-size: 11px; color: #9ca3af; margin: 4px 0; }
+    .order-ref { font-family: monospace; font-size: 10px; color: #9ca3af; word-break: break-all; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">Merry360X</div>
+    <div class="receipt-title">Payment Receipt</div>
+    <div class="receipt-number">${receiptNumber}</div>
+  </div>
+  
+  <div class="section">
+    <div class="section-title">Customer Details</div>
+    <div class="row"><span class="label">Name</span><span class="value">${guestName}</span></div>
+    <div class="row"><span class="label">Email</span><span class="value">${guestEmail}</span></div>
+    ${guestPhone ? `<div class="row"><span class="label">Phone</span><span class="value">${guestPhone}</span></div>` : ''}
+  </div>
+  
+  <div class="section">
+    <div class="section-title">Payment Details</div>
+    <div class="row"><span class="label">Date</span><span class="value">${bookingDate}</span></div>
+    <div class="row"><span class="label">Method</span><span class="value">Mobile Money</span></div>
+    <div class="row"><span class="label">Status</span><span class="value"><span class="paid-badge">PAID</span></span></div>
+  </div>
+  
+  ${items.length > 1 ? `
+  <div class="section">
+    <div class="section-title">Booking Items</div>
+    ${items.map((item) => {
+      const itemName = item.title || item.name || "Item";
+      const itemPrice = formatMoney(item.calculated_price || item.price, item.calculated_price_currency || item.currency || 'USD');
+      const itemIcon = item.metadata?.type === 'tour' ? '🗺️' : item.metadata?.type === 'transport' ? '🚗' : '🏠';
+      return `<div class="row"><span class="label">${itemIcon} ${itemName}</span><span class="value">${itemPrice}</span></div>`;
+    }).join('')}
+  </div>
+  ` : ''}
+  
+  ${checkout.base_price_amount || checkout.service_fee_amount ? `
+  <div class="section">
+    <div class="section-title">Price Breakdown</div>
+    ${checkout.base_price_amount ? `<div class="row"><span class="label">Subtotal</span><span class="value">${formatMoney(checkout.base_price_amount, checkout.currency)}</span></div>` : ''}
+    ${checkout.service_fee_amount ? `<div class="row"><span class="label">Service Fee</span><span class="value">+${formatMoney(checkout.service_fee_amount, checkout.currency)}</span></div>` : ''}
+    ${checkout.host_earnings_amount ? `<div class="row"><span class="label">Host Receives</span><span class="value" style="color: #059669;">${formatMoney(checkout.host_earnings_amount, checkout.currency)}</span></div>` : ''}
+  </div>
+  ` : ''}
+  
+  <div class="total-row">
+    <div class="row" style="border: none;">
+      <span class="total-label">Total Amount</span>
+      <span class="total-value">${totalAmount}</span>
+    </div>
+  </div>
+  
+  <div class="footer">
+    <p>Thank you for booking with Merry360X</p>
+    <p>support@merry360x.com | merry360x.com</p>
+    <div class="order-ref">Order: ${checkout.id}</div>
+  </div>
+</body>
+</html>
+  `;
+
+  return Buffer.from(receiptHtml).toString('base64');
+}
+
+async function sendConfirmationEmail(checkout, items, bookingIds, reviewTokens, supabase = null) {
+  if (!BREVO_API_KEY) {
+    console.log("⚠️ Brevo API key not configured, skipping email");
+    return false;
+  }
+
+  if (checkout?.metadata?.confirmation_email_sent) {
+    console.log(`ℹ️ Confirmation email already sent for checkout ${checkout.id}, skipping duplicate send.`);
+    return true;
+  }
+
+  const targetEmail = checkout.email || checkout.metadata?.guest_info?.email;
+  const guestEmailValidation = validateRecipientEmail(targetEmail);
+  if (!guestEmailValidation.ok) {
+    console.log("⚠️ Skipping guest confirmation email: invalid recipient", { reason: guestEmailValidation.reason });
+    return false;
+  }
+
+  const html = generateConfirmationEmail(checkout, items, bookingIds, reviewTokens);
+  const receiptBase64 = generateReceiptPDF(checkout, items, bookingIds);
+  const guestName = checkout.name || checkout.metadata?.guest_info?.name || "Guest";
+  const receiptNumber = `MRY-${Date.now().toString(36).toUpperCase()}`;
+
+  try {
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(
+        buildBrevoSmtpPayload({
+          senderName: "Merry360X",
+          senderEmail: "support@merry360x.com",
+          to: [
+            {
+              email: guestEmailValidation.email,
+              name: guestName,
+            },
+          ],
+          subject: `Booking Confirmed - ${receiptNumber}`,
+          htmlContent: html,
+          attachment: [
+            {
+              content: receiptBase64,
+              name: `Receipt-${receiptNumber}.html`,
+            },
+          ],
+          tags: ["booking", "payment-confirmation"],
+        })
+      ),
+    });
+
+    const result = await response.json();
+    
+    if (response.ok) {
+      console.log(`📧 Confirmation email sent to ${guestEmailValidation.email}: ${result.messageId}`);
+      if (supabase && checkout?.id) {
+        try {
+          const updatedMeta = {
+            ...(checkout.metadata || {}),
+            confirmation_email_sent: true,
+            confirmation_email_sent_at: new Date().toISOString(),
+          };
+          await supabase
+            .from("checkout_requests")
+            .update({ metadata: updatedMeta })
+            .eq("id", checkout.id);
+        } catch (_) {}
+      }
+      return true;
+    } else {
+      console.error("❌ Brevo API error:", result);
+      return false;
+    }
+  } catch (error) {
+    console.error("❌ Failed to send confirmation email:", error.message);
+    return false;
+  }
+}
+
+async function sendHostNotification(supabase, booking, item) {
+  if (!BREVO_API_KEY) {
+    console.log("⚠️ Brevo API key not configured, skipping host notification");
+    return false;
+  }
+
+  try {
+    let hostEmail = null;
+    let hostName = null;
+    let hostId = null;
+    let itemTitle = item.title || item.name || "Your Service";
+    let itemType = "service";
+
+    if (item.item_type === 'property') {
+      const { data: property, error: propError } = await supabase
+        .from('properties')
+        .select('title, host_id')
+        .eq('id', item.reference_id)
+        .single();
+      
+      if (propError) {
+        console.error("❌ Error fetching property:", propError);
+        return false;
+      }
+      
+      if (property) {
+        itemTitle = property.title;
+        itemType = "property";
+        hostId = property.host_id;
+      }
+    } else if (item.item_type === 'tour' || item.item_type === 'tour_package') {
+      const table = item.item_type === 'tour' ? 'tours' : 'tour_packages';
+      const hostField = item.item_type === 'tour' ? 'created_by' : 'host_id';
+      
+      const { data: tour, error: tourError } = await supabase
+        .from(table)
+        .select(`title, ${hostField}`)
+        .eq('id', item.reference_id)
+        .single();
+      
+      if (tourError) {
+        console.error(`❌ Error fetching ${table}:`, tourError);
+        return false;
+      }
+      
+      if (tour) {
+        itemTitle = tour.title;
+        itemType = "tour";
+        hostId = tour[hostField];
+      }
+    } else if (item.item_type === 'transport_vehicle') {
+      const { data: vehicle, error: vehError } = await supabase
+        .from('transport_vehicles')
+        .select('title, owner_id')
+        .eq('id', item.reference_id)
+        .single();
+      
+      if (vehError) {
+        console.error("❌ Error fetching vehicle:", vehError);
+        return false;
+      }
+      
+      if (vehicle) {
+        itemTitle = vehicle.title;
+        itemType = "transport";
+        hostId = vehicle.owner_id;
+      }
+    }
+
+    if (!hostId) {
+      console.log("⚠️ No host ID found for item:", item.reference_id);
+      return false;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('email, full_name')
+      .eq('id', hostId)
+      .single();
+    
+    if (profileError || !profile) {
+      console.error("❌ Error fetching host profile:", profileError);
+      return false;
+    }
+    
+    hostEmail = profile.email;
+    hostName = profile.full_name;
+
+    const hostEmailValidation = validateRecipientEmail(hostEmail);
+    if (!hostEmailValidation.ok) {
+      console.log("⚠️ Skipping host notification email: invalid host recipient", { hostId, reason: hostEmailValidation.reason });
+      return false;
+    }
+
+    hostEmail = hostEmailValidation.email;
+
+    const guestName = booking.guest_name || "A guest";
+    const guestEmail = booking.guest_email || "";
+    const guestPhone = booking.guest_phone || "";
+    const checkIn = formatDate(booking.check_in);
+    const checkOut = formatDate(booking.check_out);
+    const hostEarningsCurrency = item?.calculated_price_currency || item?.currency || booking.currency || "RWF";
+    const hostReceivesAmount = formatMoney(
+      computeHostReceivesAmount(item, booking),
+      hostEarningsCurrency
+    );
+    const bookingRef = `MRY-${booking.id.slice(0, 8).toUpperCase()}`;
+
+    const hostHtml = renderMinimalEmail({
+      eyebrow: "New Booking",
+      title: "You received a new booking",
+      subtitle: `Hi ${hostName || "Host"}, a guest booked your ${itemType}.`,
+      bodyHtml: keyValueRows([
+        { label: "Item", value: escapeHtml(itemTitle) },
+        { label: "Booking Ref", value: escapeHtml(bookingRef) },
+        { label: "Guest", value: escapeHtml(guestName) },
+        { label: "Guest Email", value: guestEmail ? `<a href="mailto:${escapeHtml(guestEmail)}" style="color:#111827;text-decoration:none;">${escapeHtml(guestEmail)}</a>` : "—" },
+        { label: "Guest Phone", value: guestPhone ? `<a href="tel:${escapeHtml(guestPhone)}" style="color:#111827;text-decoration:none;">${escapeHtml(guestPhone)}</a>` : "—" },
+        { label: "Check-in", value: escapeHtml(checkIn) },
+        { label: "Check-out", value: escapeHtml(checkOut) },
+        { label: "Guests", value: escapeHtml(`${booking.guests || 1}`) },
+        { label: "Your Earnings", value: escapeHtml(hostReceivesAmount) },
+      ]),
+      ctaText: "Open Host Dashboard",
+      ctaUrl: "https://merry360x.com/host-dashboard",
+    });
+
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(
+        buildBrevoSmtpPayload({
+          senderName: "Merry360X",
+          senderEmail: "support@merry360x.com",
+          to: [
+            {
+              email: hostEmail,
+              name: hostName || "Host",
+            },
+          ],
+          subject: `New Booking: ${itemTitle} - ${bookingRef}`,
+          htmlContent: hostHtml,
+          tags: ["booking", "host-notification"],
+        })
+      ),
+    });
+
+    const result = await response.json();
+    
+    if (response.ok) {
+      console.log(`📧 Host notification sent to ${hostEmail}: ${result.messageId}`);
+      return true;
+    } else {
+      console.error("❌ Brevo API error for host notification:", result);
+      return false;
+    }
+  } catch (error) {
+    console.error("❌ Failed to send host notification:", error.message);
+    return false;
+  }
 }
 
 function buildPayoutResultEmailHtml({ status, amount, currency, method, reason }) {
@@ -825,6 +1310,7 @@ export default async function handler(req, res) {
         console.log("📦 Creating bookings from checkout items (via status check)...");
         const items = checkoutData.metadata?.items || [];
         const bookingDetails = checkoutData.metadata?.booking_details;
+        const createdBookingIds = [];
         
         for (const item of items) {
           try {
@@ -838,41 +1324,54 @@ export default async function handler(req, res) {
 
             if (existingBooking && existingBooking.length > 0) {
               console.log(`⏭️ Booking already exists for item ${item.reference_id}`);
+              createdBookingIds.push(existingBooking[0].id);
               continue;
             }
 
             const bookingData = {
               guest_id: checkoutData.user_id,
-              guest_name: checkoutData.metadata?.guest_info?.name || null,
-              guest_email: checkoutData.email,
-              guest_phone: checkoutData.metadata?.guest_info?.phone || null,
+              guest_name: checkoutData.metadata?.guest_info?.name || checkoutData.name || null,
+              guest_email: checkoutData.email || checkoutData.metadata?.guest_info?.email || null,
+              guest_phone: checkoutData.metadata?.guest_info?.phone || checkoutData.phone || null,
               order_id: checkoutData.id,
               total_price: item.calculated_price || item.price,
-              currency: item.calculated_price_currency || item.currency || checkoutData.currency || 'RWF',
-              status: 'pending',
-              confirmation_status: 'pending',
+              currency: item.calculated_price_currency || item.currency || checkoutData.currency || 'USD',
               payment_status: 'paid',
               payment_method: 'mobile_money',
+              referral_code: checkoutData.referral_code || checkoutData.metadata?.referral_code || null,
               guests: bookingDetails?.guests || item.metadata?.guests || 1,
               review_token: crypto.randomUUID(),
             };
 
-            // Set booking_type for proper dashboard filtering
+            // Set booking_type and instant/pending confirmation status
             if (item.item_type === 'property') {
               bookingData.booking_type = 'property';
               bookingData.property_id = item.reference_id;
               bookingData.check_in = bookingDetails?.check_in || item.metadata?.check_in;
               bookingData.check_out = bookingDetails?.check_out || item.metadata?.check_out;
+              bookingData.status = 'confirmed';
+              bookingData.confirmation_status = null;
             } else if (item.item_type === 'tour' || item.item_type === 'tour_package') {
               bookingData.booking_type = 'tour';
               bookingData.tour_id = item.reference_id;
               bookingData.check_in = bookingDetails?.check_in || item.metadata?.check_in || new Date().toISOString().split('T')[0];
               bookingData.check_out = bookingDetails?.check_out || item.metadata?.check_out || new Date().toISOString().split('T')[0];
+              const tourTable = item.item_type === 'tour' ? 'tours' : 'tour_packages';
+              const { data: listing } = await supabase.from(tourTable).select('requires_confirmation').eq('id', item.reference_id).single();
+              if (listing?.requires_confirmation === true) {
+                bookingData.status = 'pending';
+                bookingData.confirmation_status = 'pending';
+              } else {
+                bookingData.status = 'confirmed';
+                bookingData.confirmation_status = null;
+              }
             } else if (item.item_type === 'transport_vehicle') {
               bookingData.booking_type = 'transport';
               bookingData.transport_id = item.reference_id;
               bookingData.check_in = bookingDetails?.check_in || item.metadata?.check_in || new Date().toISOString().split('T')[0];
               bookingData.check_out = bookingDetails?.check_out || item.metadata?.check_out || new Date().toISOString().split('T')[0];
+              bookingData.status = 'confirmed';
+              bookingData.confirmation_status = null;
             }
 
             const { data: booking, error: bookingError } = await supabase
@@ -885,9 +1384,46 @@ export default async function handler(req, res) {
               console.error("❌ Failed to create booking:", bookingError);
             } else {
               console.log(`✅ Booking created: ${booking.id}`);
+              createdBookingIds.push(booking.id);
             }
           } catch (bookingErr) {
             console.error("❌ Booking creation error:", bookingErr);
+          }
+        }
+
+        // Send confirmation email and host notification
+        const guestEmail = checkoutData.email || checkoutData.metadata?.guest_info?.email;
+        if (guestEmail && paymentStatus === "paid") {
+          console.log(`📧 Sending confirmation email to ${guestEmail} via status check...`);
+          let reviewTokens = [];
+          if (createdBookingIds.length > 0) {
+            const { data: tokenData } = await supabase
+              .from("bookings")
+              .select("id, review_token")
+              .in("id", createdBookingIds);
+            reviewTokens = tokenData || [];
+          }
+
+          await sendConfirmationEmail(checkoutData, items, createdBookingIds, reviewTokens, supabase);
+
+          // Send host notifications for each booking created
+          if (createdBookingIds.length > 0 && items.length > 0) {
+            console.log(`📧 Sending host notifications for ${createdBookingIds.length} bookings via status check...`);
+            for (let i = 0; i < createdBookingIds.length; i++) {
+              const bookingId = createdBookingIds[i];
+              const item = items[i];
+              if (bookingId && item) {
+                const { data: booking, error: bookingError } = await supabase
+                  .from("bookings")
+                  .select("*")
+                  .eq("id", bookingId)
+                  .single();
+
+                if (booking && !bookingError) {
+                  await sendHostNotification(supabase, booking, item);
+                }
+              }
+            }
           }
         }
       }

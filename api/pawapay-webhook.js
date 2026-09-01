@@ -356,6 +356,19 @@ function formatDate(dateStr) {
   });
 }
 
+function formatDateTime(dateStr, timeStr) {
+  if (!dateStr) return null;
+  try {
+    const formatted = formatDate(dateStr);
+    if (timeStr) {
+      return `${formatted} at ${String(timeStr).trim()}`;
+    }
+    return formatted;
+  } catch {
+    return String(dateStr);
+  }
+}
+
 function getServiceTypeFromItem(itemType) {
   if (itemType === "property") return "accommodation";
   if (itemType === "tour" || itemType === "tour_package") return "tour";
@@ -597,10 +610,15 @@ function generateReceiptPDF(checkout, items, bookingIds) {
 }
 
 // Send confirmation email using Brevo API
-async function sendConfirmationEmail(checkout, items, bookingIds, reviewTokens) {
+async function sendConfirmationEmail(checkout, items, bookingIds, reviewTokens, supabase = null) {
   if (!BREVO_API_KEY) {
     console.log("⚠️ Brevo API key not configured, skipping email");
     return false;
+  }
+
+  if (checkout?.metadata?.confirmation_email_sent) {
+    console.log(`ℹ️ Confirmation email already sent for checkout ${checkout.id}, skipping duplicate send.`);
+    return true;
   }
 
   const guestEmailValidation = validateRecipientEmail(checkout.email);
@@ -649,6 +667,19 @@ async function sendConfirmationEmail(checkout, items, bookingIds, reviewTokens) 
     
     if (response.ok) {
       console.log(`📧 Confirmation email sent to ${guestEmailValidation.email}: ${result.messageId}`);
+      if (supabase && checkout?.id) {
+        try {
+          const updatedMeta = {
+            ...(checkout.metadata || {}),
+            confirmation_email_sent: true,
+            confirmation_email_sent_at: new Date().toISOString(),
+          };
+          await supabase
+            .from("checkout_requests")
+            .update({ metadata: updatedMeta })
+            .eq("id", checkout.id);
+        } catch (_) {}
+      }
       return true;
     } else {
       console.error("❌ Brevo API error:", result);
@@ -1121,7 +1152,7 @@ export default async function handler(req, res) {
         reviewTokens = tokenData || [];
       }
 
-      await sendConfirmationEmail(checkout, items, createdBookingIds, reviewTokens);
+      await sendConfirmationEmail(checkout, items, createdBookingIds, reviewTokens, supabase);
       
       // Send host notifications for each booking created
       if (createdBookingIds.length > 0 && items.length > 0) {
