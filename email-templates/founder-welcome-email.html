@@ -52,26 +52,38 @@
       .grid-item {
         display: inline-block !important;
         width: 48% !important;
-        margin-bottom: 12px !important;
-      }
-
-      .journey-item {
-        display: inline-block !important;
-        width: 48% !important;
-        margin-bottom: 14px !important;
-        text-align: center !important;
+        max-width: 48% !important;
+        box-sizing: border-box !important;
+        margin-bottom: 10px !important;
+        padding: 4px !important;
+        vertical-align: top !important;
       }
 
       .journey-left {
         display: block !important;
         width: 100% !important;
         text-align: center !important;
+        padding-right: 0 !important;
         padding-bottom: 16px !important;
+        border-right: none !important;
+        border-bottom: 1px dashed #fecdd3 !important;
+        margin-bottom: 16px !important;
       }
 
       .journey-right {
         display: block !important;
         width: 100% !important;
+        padding-left: 0 !important;
+      }
+
+      .journey-item {
+        display: inline-block !important;
+        width: 48% !important;
+        max-width: 48% !important;
+        box-sizing: border-box !important;
+        text-align: center !important;
+        vertical-align: top !important;
+        padding: 6px 4px 12px !important;
       }
 
       .footer-split td {
@@ -80,16 +92,13 @@
         text-align: center !important;
       }
 
-      .footer-social {
-        text-align: center !important;
-        margin-top: 16px !important;
+      .footer-brand-td {
+        margin: 0 auto !important;
       }
 
-      .founder-avatar-td {
-        display: block !important;
-        width: 100% !important;
+      .footer-social {
         text-align: center !important;
-        padding-bottom: 16px !important;
+        margin-top: 18px !important;
       }
     }
   </style>
@@ -105,11 +114,11 @@
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" class="email-container"
           style="max-width: 620px; background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 35px rgba(0, 0, 0, 0.08); border: 1px solid #e2e8f0;">
 
-          <!-- Top Logo Header (Dark Theme) -->
+          <!-- Top Logo Header -->
           <tr>
             <td align="center" style="padding: 24px 20px 18px; background-color: #ffffff;">
               <a href="https://merry360x.com" target="_blank" style="text-decoration: none; display: inline-block;">
-                <img src="https://merry360x.com/brand/logo.png" alt="Merry360X" width="56" height="56"
+                <img src="https://merry360x.com/brand/dark_mode.png" alt="Merry360X" width="56" height="56"
                   style="display: block; width: 56px; height: 56px; border-radius: 50%; object-fit: contain;" />
               </a>
             </td>
@@ -121,7 +130,7 @@
               <img src="https://merry360x.com/brand/founder-banner.jpg" alt="A Personal Note From Our Founder"
                 width="620" style="display: block; width: 100%; max-width: 100%; height: auto; border: 0;" />
 
-              <!-- Title Card Block (Under image) -->
+              <!-- Title Card Block -->
               <div
                 style="background: linear-gradient(180deg, #18181b 0%, #0f172a 100%); padding: 22px 20px 24px; text-align: center;">
                 <h1
@@ -146,8 +155,7 @@
 
               <p
                 style="margin: 0 0 16px; font-size: 18px; font-weight: 800; color: #dc2626; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-                Dear {{ if .Data.first_name }}{{ .Data.first_name }}{{ else if .Data.full_name }}{{ .Data.full_name }}{{
-                else }}Explorer{{ end }},
+                Dear {{ if .Data.first_name }}{{ .Data.first_name }}{{ else if .Data.full_name }}{{ .Data.full_name }}{{ else }}Explorer{{ end }},
               </p>
 
               <p style="margin: 0 0 12px; font-size: 14.5px; color: #1e293b; line-height: 1.5;">
@@ -182,7 +190,7 @@
             </td>
           </tr>
 
-          <!-- 2. "YOU ARE PART OF THE JOURNEY" Horizontal Card -->
+          <!-- 2. "YOU ARE PART OF THE JOURNEY" Horizontal Card (Responsive 2x2 on Mobile) -->
           <tr>
             <td style="padding: 0 24px 28px;">
               <div
@@ -191,7 +199,7 @@
                   <tr>
 
                     <!-- Left Title -->
-                    <td class="journey-left" width="30%" valign="middle"
+                    <td class="journey-left" width="28%" valign="middle"
                       style="padding-right: 12px; border-right: 1px dashed #fecdd3;">
                       <p
                         style="margin: 0; font-size: 12px; font-weight: 800; color: #0f172a; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.2;">
@@ -204,8 +212,8 @@
                       <div style="width: 32px; height: 2px; background-color: #ea580c; border-radius: 2px;"></div>
                     </td>
 
-                    <!-- Right 4 Milestones -->
-                    <td class="journey-right" width="70%" valign="middle" style="padding-left: 14px;">
+                    <!-- Right 4 Milestones (2x2 on mobile, 4 in row on desktop) -->
+                    <td class="journey-right" width="72%" valign="middle" style="padding-left: 10px;">
                       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                         <tr>
 
@@ -213,7 +221,9 @@
                           <td class="journey-item" width="25%" align="center" valign="top" style="padding: 0 4px;">
                             <div
                               style="width: 38px; height: 38px; border-radius: 50%; border: 1.5px solid #fda4af; background-color: #ffffff; text-align: center; margin: 0 auto 6px; line-height: 38px;">
-                              <span style="font-size: 18px; vertical-align: middle;">👤</span>
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="#dc2626" style="display: inline-block; vertical-align: middle;">
+                                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                              </svg>
                             </div>
                             <p style="margin: 0; font-size: 11px; font-weight: 600; color: #1e293b; line-height: 1.3;">
                               One of our earliest users
@@ -224,7 +234,11 @@
                           <td class="journey-item" width="25%" align="center" valign="top" style="padding: 0 4px;">
                             <div
                               style="width: 38px; height: 38px; border-radius: 50%; border: 1.5px solid #fda4af; background-color: #ffffff; text-align: center; margin: 0 auto 6px; line-height: 38px;">
-                              <span style="font-size: 18px; vertical-align: middle;">🌐</span>
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="2" y1="12" x2="22" y2="12"></line>
+                                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                              </svg>
                             </div>
                             <p style="margin: 0; font-size: 11px; font-weight: 600; color: #1e293b; line-height: 1.3;">
                               Helping shape the future of African travel
@@ -235,10 +249,12 @@
                           <td class="journey-item" width="25%" align="center" valign="top" style="padding: 0 4px;">
                             <div
                               style="width: 38px; height: 38px; border-radius: 50%; border: 1.5px solid #fda4af; background-color: #ffffff; text-align: center; margin: 0 auto 6px; line-height: 38px;">
-                              <span style="font-size: 18px; vertical-align: middle;">🏡</span>
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="#dc2626" style="display: inline-block; vertical-align: middle;">
+                                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+                              </svg>
                             </div>
                             <p style="margin: 0; font-size: 11px; font-weight: 600; color: #1e293b; line-height: 1.3;">
-                              Supporting local hosts, operators &amp; tourism businesses
+                              Supporting local hosts, operators &amp; businesses
                             </p>
                           </td>
 
@@ -246,7 +262,9 @@
                           <td class="journey-item" width="25%" align="center" valign="top" style="padding: 0 4px;">
                             <div
                               style="width: 38px; height: 38px; border-radius: 50%; border: 1.5px solid #fda4af; background-color: #ffffff; text-align: center; margin: 0 auto 6px; line-height: 38px;">
-                              <span style="font-size: 18px; vertical-align: middle;">❤️</span>
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="#dc2626" style="display: inline-block; vertical-align: middle;">
+                                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                              </svg>
                             </div>
                             <p style="margin: 0; font-size: 11px; font-weight: 600; color: #1e293b; line-height: 1.3;">
                               Building a stronger travel ecosystem for Africa
@@ -283,7 +301,7 @@
             </td>
           </tr>
 
-          <!-- 4. "WHAT COMES NEXT?" 6-Feature Grid -->
+          <!-- 4. "WHAT COMES NEXT?" 6-Feature Grid (Responsive 2x3 on Mobile) -->
           <tr>
             <td style="padding: 0 24px 28px; text-align: center;">
 
@@ -481,21 +499,21 @@
             </td>
           </tr>
 
-          <!-- 8. Premium Dark Footer with Social Links -->
+          <!-- 8. Premium Dark Footer with Real Vector Social Links -->
           <tr>
             <td style="background-color: #18181b; padding: 28px 24px 20px; color: #ffffff;">
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" class="footer-split">
                 <tr>
 
                   <!-- Left: Brand Info -->
-                  <td valign="middle">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                  <td valign="middle" class="footer-brand-td">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin: 0 auto 0 0;">
                       <tr>
                         <td valign="middle" style="padding-right: 12px;">
                           <img src="https://merry360x.com/brand/dark_mode.png" alt="Merry360X" width="40" height="40"
                             style="display: block; width: 40px; height: 40px; border-radius: 50%;" />
                         </td>
-                        <td valign="middle">
+                        <td valign="middle" style="text-align: left;">
                           <h4
                             style="margin: 0; font-size: 15px; font-weight: 800; color: #ffffff; letter-spacing: -0.01em;">
                             MERRY<span style="color: #dc2626;">360X</span>
@@ -512,33 +530,69 @@
                     </table>
                   </td>
 
-                  <!-- Right: Social Circle Icons -->
+                  <!-- Right: Real Social Vector Circle Icons -->
                   <td valign="middle" align="right" class="footer-social">
+                    
+                    <!-- Instagram -->
                     <a href="https://www.instagram.com/merry360.x?utm_source=qr" target="_blank"
-                      style="display: inline-block; margin: 0 3px; text-decoration: none;">
-                      <span
-                        style="display: inline-block; width: 32px; height: 32px; border-radius: 50%; background-color: #ffffff; text-align: center; line-height: 32px; font-size: 14px;">📸</span>
+                      style="display: inline-block; margin: 0 4px; text-decoration: none;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="display: inline-block; vertical-align: middle;">
+                        <tr>
+                          <td align="center" valign="middle" style="width: 32px; height: 32px; background-color: #ffffff; border-radius: 50%;">
+                            <img src="https://cdn.simpleicons.org/instagram/E1306C" alt="Instagram" width="16" height="16" style="display: block; width: 16px; height: 16px; border: 0;" />
+                          </td>
+                        </tr>
+                      </table>
                     </a>
+
+                    <!-- Facebook -->
                     <a href="https://www.facebook.com/share/1QenskQsgG/?mibextid=wwXIfr" target="_blank"
-                      style="display: inline-block; margin: 0 3px; text-decoration: none;">
-                      <span
-                        style="display: inline-block; width: 32px; height: 32px; border-radius: 50%; background-color: #ffffff; text-align: center; line-height: 32px; font-size: 14px;">📘</span>
+                      style="display: inline-block; margin: 0 4px; text-decoration: none;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="display: inline-block; vertical-align: middle;">
+                        <tr>
+                          <td align="center" valign="middle" style="width: 32px; height: 32px; background-color: #ffffff; border-radius: 50%;">
+                            <img src="https://cdn.simpleicons.org/facebook/1877F2" alt="Facebook" width="16" height="16" style="display: block; width: 16px; height: 16px; border: 0;" />
+                          </td>
+                        </tr>
+                      </table>
                     </a>
+
+                    <!-- TikTok -->
                     <a href="https://tiktok.com/@merry360x" target="_blank"
-                      style="display: inline-block; margin: 0 3px; text-decoration: none;">
-                      <span
-                        style="display: inline-block; width: 32px; height: 32px; border-radius: 50%; background-color: #ffffff; text-align: center; line-height: 32px; font-size: 14px;">🎵</span>
+                      style="display: inline-block; margin: 0 4px; text-decoration: none;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="display: inline-block; vertical-align: middle;">
+                        <tr>
+                          <td align="center" valign="middle" style="width: 32px; height: 32px; background-color: #ffffff; border-radius: 50%;">
+                            <img src="https://cdn.simpleicons.org/tiktok/000000" alt="TikTok" width="16" height="16" style="display: block; width: 16px; height: 16px; border: 0;" />
+                          </td>
+                        </tr>
+                      </table>
                     </a>
+
+                    <!-- LinkedIn -->
                     <a href="https://linkedin.com/company/merry360x" target="_blank"
-                      style="display: inline-block; margin: 0 3px; text-decoration: none;">
-                      <span
-                        style="display: inline-block; width: 32px; height: 32px; border-radius: 50%; background-color: #ffffff; text-align: center; line-height: 32px; font-size: 14px;">💼</span>
+                      style="display: inline-block; margin: 0 4px; text-decoration: none;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="display: inline-block; vertical-align: middle;">
+                        <tr>
+                          <td align="center" valign="middle" style="width: 32px; height: 32px; background-color: #ffffff; border-radius: 50%;">
+                            <img src="https://cdn.simpleicons.org/linkedin/0A66C2" alt="LinkedIn" width="16" height="16" style="display: block; width: 16px; height: 16px; border: 0;" />
+                          </td>
+                        </tr>
+                      </table>
                     </a>
+
+                    <!-- X / Twitter -->
                     <a href="https://x.com/merry360x" target="_blank"
-                      style="display: inline-block; margin: 0 3px; text-decoration: none;">
-                      <span
-                        style="display: inline-block; width: 32px; height: 32px; border-radius: 50%; background-color: #ffffff; text-align: center; line-height: 32px; font-size: 14px;">✖️</span>
+                      style="display: inline-block; margin: 0 4px; text-decoration: none;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="display: inline-block; vertical-align: middle;">
+                        <tr>
+                          <td align="center" valign="middle" style="width: 32px; height: 32px; background-color: #ffffff; border-radius: 50%;">
+                            <img src="https://cdn.simpleicons.org/x/000000" alt="X" width="16" height="16" style="display: block; width: 16px; height: 16px; border: 0;" />
+                          </td>
+                        </tr>
+                      </table>
                     </a>
+
                   </td>
 
                 </tr>
