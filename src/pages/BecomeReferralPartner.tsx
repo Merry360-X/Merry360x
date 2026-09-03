@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePartnerProgramSettings } from "@/hooks/usePartnerProgramSettings";
 import { 
   DollarSign, 
   Users, 
@@ -29,6 +30,7 @@ import {
 
 export default function BecomeReferralPartner() {
   const { user, refreshRoles, isReferral, isLoading: authLoading, rolesLoading } = useAuth();
+  const { commissionRate } = usePartnerProgramSettings();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -141,7 +143,7 @@ export default function BecomeReferralPartner() {
     if (!termsAccepted) {
       toast({
         title: "Terms acceptance required",
-        description: "Please accept the Referral Partner Terms & Agreement (10% commission).",
+        description: `Please accept the Referral Partner Terms & Agreement (${commissionRate}% commission).`,
         variant: "destructive",
       });
       return;
@@ -171,7 +173,7 @@ export default function BecomeReferralPartner() {
       // 2. Check if affiliate record already exists
       const { data: existingAffiliate } = await supabase
         .from("affiliates")
-        .select("id, user_id, referral_code")
+        .select("id, user_id, referral_code, commission_rate")
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -180,7 +182,7 @@ export default function BecomeReferralPartner() {
         referral_code: cleanCode,
         affiliate_code: cleanCode,
         company_name: formData.companyName.trim() || null,
-        commission_rate: 10.00,
+        commission_rate: Number(existingAffiliate?.commission_rate || commissionRate || 10.00),
         status: "active",
       };
 
@@ -210,7 +212,7 @@ export default function BecomeReferralPartner() {
 
       toast({
         title: "Welcome to the Partner Program! 🎉",
-        description: `Your unique referral code ${cleanCode} is now active with 10% commission.`,
+        description: `Your unique referral code ${cleanCode} is now active with ${commissionRate}% commission.`,
       });
 
       await refreshRoles();
@@ -240,10 +242,10 @@ export default function BecomeReferralPartner() {
               Merry360x Partner Program
             </div>
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
-              Earn <span className="text-rose-500">10% Commission</span> on Every Referral
+              Earn <span className="text-rose-500">{commissionRate}% Commission</span> on Every Referral
             </h1>
             <p className="text-slate-600 max-w-2xl mx-auto text-base">
-              Join our partner network. Share your unique referral code with travelers, guests, and audiences to earn 10% cash commissions on every completed booking.
+              Join our partner network. Share your unique referral code with travelers, guests, and audiences to earn {commissionRate}% cash commissions on every completed booking.
             </p>
           </div>
 
@@ -255,8 +257,8 @@ export default function BecomeReferralPartner() {
                   <Percent className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-slate-900 text-sm">10% Per Booking</h3>
-                  <p className="text-xs text-slate-500 mt-1">Get paid 10% on accommodations, curated tours, and transport services.</p>
+                  <h3 className="font-semibold text-slate-900 text-sm">{commissionRate}% Per Booking</h3>
+                  <p className="text-xs text-slate-500 mt-1">Get paid {commissionRate}% on accommodations, curated tours, and transport services.</p>
                 </div>
               </CardContent>
             </Card>
@@ -280,7 +282,7 @@ export default function BecomeReferralPartner() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-slate-900 text-sm">Instant Mobile Payouts</h3>
-                  <p className="text-xs text-slate-500 mt-1">Fast withdrawals directly to MTN Mobile Money, Airtel Money, or Bank.</p>
+                  <p className="text-xs text-slate-500 mt-1">Fast withdrawals directly to Mobile Money or Bank Transfer.</p>
                 </div>
               </CardContent>
             </Card>
@@ -395,51 +397,38 @@ export default function BecomeReferralPartner() {
                       How would you like to receive your commissions?
                     </Label>
                     
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 gap-3">
                       <button
                         type="button"
                         onClick={() => setFormData({ ...formData, payoutMethod: "mtn_momo" })}
-                        className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-1.5 ${
+                        className={`p-3.5 rounded-xl border text-center transition-all flex flex-col items-center gap-1.5 ${
                           formData.payoutMethod === "mtn_momo"
-                            ? "border-amber-400 bg-amber-50/50 text-amber-900 font-semibold ring-2 ring-amber-400/30"
+                            ? "border-emerald-500 bg-emerald-50/60 text-emerald-950 font-semibold ring-2 ring-emerald-500/30"
                             : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
                         }`}
                       >
-                        <Smartphone className="w-5 h-5 text-amber-500" />
-                        <span className="text-xs">MTN MoMo</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, payoutMethod: "airtel_money" })}
-                        className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-1.5 ${
-                          formData.payoutMethod === "airtel_money"
-                            ? "border-red-400 bg-red-50/50 text-red-900 font-semibold ring-2 ring-red-400/30"
-                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                        }`}
-                      >
-                        <Smartphone className="w-5 h-5 text-red-500" />
-                        <span className="text-xs">Airtel Money</span>
+                        <Smartphone className="w-5 h-5 text-emerald-600" />
+                        <span className="text-xs sm:text-sm font-medium">Mobile Money</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setFormData({ ...formData, payoutMethod: "bank" })}
-                        className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-1.5 ${
+                        className={`p-3.5 rounded-xl border text-center transition-all flex flex-col items-center gap-1.5 ${
                           formData.payoutMethod === "bank"
-                            ? "border-blue-400 bg-blue-50/50 text-blue-900 font-semibold ring-2 ring-blue-400/30"
+                            ? "border-blue-500 bg-blue-50/60 text-blue-950 font-semibold ring-2 ring-blue-500/30"
                             : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
                         }`}
                       >
-                        <CreditCard className="w-5 h-5 text-blue-500" />
-                        <span className="text-xs">Bank Transfer</span>
+                        <CreditCard className="w-5 h-5 text-blue-600" />
+                        <span className="text-xs sm:text-sm font-medium">Bank Transfer</span>
                       </button>
                     </div>
 
                     {formData.payoutMethod !== "bank" ? (
                       <div className="space-y-1.5 pt-2">
                         <Label htmlFor="payoutPhone" className="text-sm font-medium text-slate-700">
-                          {formData.payoutMethod === "mtn_momo" ? "MTN MoMo Number" : "Airtel Money Number"}
+                          Mobile Money Number
                         </Label>
                         <Input
                           id="payoutPhone"
@@ -498,7 +487,7 @@ export default function BecomeReferralPartner() {
                         I accept the Merry360x Referral Partner Terms & Agreement
                       </label>
                       <p className="text-xs text-slate-500 leading-relaxed">
-                        I understand that I will receive a <strong>10% commission</strong> for each completed booking made by customers who use my unique referral code at checkout. Commissions are processed upon booking confirmation and completion.
+                        I understand that I will receive a <strong>{commissionRate}% commission</strong> for each completed booking made by customers who use my unique referral code at checkout. Commissions are processed upon booking confirmation and completion.
                       </p>
                     </div>
                   </div>

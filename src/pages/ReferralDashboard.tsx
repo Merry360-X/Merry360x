@@ -546,7 +546,7 @@ export default function ReferralDashboard() {
                       </div>
                       <h3 className="font-semibold text-slate-900 text-base">No referral bookings yet</h3>
                       <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                        Share your referral code <strong className="font-mono text-slate-800">{referralCode}</strong> to start earning 10% on every booking made with your code.
+                        Share your referral code <strong className="font-mono text-slate-800">{referralCode}</strong> to start earning {commissionRate}% on every booking made with your code.
                       </p>
                       <Button
                         variant="outline"
@@ -692,7 +692,7 @@ export default function ReferralDashboard() {
                   Merry360x Partner Guarantee
                 </h4>
                 <p className="text-xs text-slate-500 max-w-xl">
-                  You earn 10% commission on the total value of each booking completed with your referral code. Payouts are verified and processed promptly upon customer stay or tour completion.
+                  You earn {commissionRate}% commission on the total value of each booking completed with your referral code. Payouts are verified and processed promptly upon customer stay or tour completion.
                 </p>
               </div>
               <Button variant="outline" size="sm" asChild className="shrink-0">

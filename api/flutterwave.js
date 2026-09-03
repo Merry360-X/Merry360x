@@ -365,7 +365,10 @@ async function createBookingsForPaidCheckout(supabase, checkoutData) {
         .eq(relationField, item.reference_id)
         .limit(1);
 
-      if (existingBooking && existingBooking.length > 0) continue;
+      if (existingBooking && existingBooking.length > 0) {
+        if (existingBooking[0]?.id) createdIds.push(existingBooking[0].id);
+        continue;
+      }
 
       const bookingData = {
         guest_id: checkoutData.user_id,
@@ -1074,18 +1077,46 @@ async function handleVerifyPayment(req, res) {
       },
     };
 
-    await supabase
-      .from("checkout_requests")
-      .update({
-        payment_status: paymentStatus,
-        payment_method: "flutterwave",
-        metadata: nextMetadata,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", checkoutData.id);
+    let isFirstPaidTransition = false;
+    if (paymentStatus === "paid") {
+      const { data: claimed } = await supabase
+        .from("checkout_requests")
+        .update({
+          payment_status: "paid",
+          payment_method: "flutterwave",
+          metadata: nextMetadata,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", checkoutData.id)
+        .neq("payment_status", "paid")
+        .select("id");
 
-    if (paymentStatus === "paid" && checkoutData.payment_status !== "paid") {
-      const mergedCheckout = { ...checkoutData, metadata: nextMetadata };
+      if (claimed && claimed.length > 0) {
+        isFirstPaidTransition = true;
+      } else {
+        // Already marked paid by webhook or concurrent request; persist verify metadata without duplicate processing
+        await supabase
+          .from("checkout_requests")
+          .update({
+            metadata: nextMetadata,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", checkoutData.id);
+      }
+    } else {
+      await supabase
+        .from("checkout_requests")
+        .update({
+          payment_status: paymentStatus,
+          payment_method: "flutterwave",
+          metadata: nextMetadata,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", checkoutData.id);
+    }
+
+    if (isFirstPaidTransition) {
+      const mergedCheckout = { ...checkoutData, payment_status: "paid", metadata: nextMetadata };
       await upsertSavedCardMethod({
         supabase,
         checkoutData: mergedCheckout,
@@ -1246,18 +1277,46 @@ async function handleWebhook(req, res) {
     },
   };
 
-  await supabase
-    .from("checkout_requests")
-    .update({
-      payment_status: paymentStatus,
-      payment_method: "flutterwave",
-      metadata: nextMetadata,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", checkoutData.id);
+  let isFirstPaidTransition = false;
+  if (paymentStatus === "paid") {
+    const { data: claimed } = await supabase
+      .from("checkout_requests")
+      .update({
+        payment_status: "paid",
+        payment_method: "flutterwave",
+        metadata: nextMetadata,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", checkoutData.id)
+      .neq("payment_status", "paid")
+      .select("id");
 
-  if (paymentStatus === "paid" && checkoutData.payment_status !== "paid") {
-    const mergedCheckout = { ...checkoutData, metadata: nextMetadata };
+    if (claimed && claimed.length > 0) {
+      isFirstPaidTransition = true;
+    } else {
+      // Already marked paid by verify endpoint or concurrent webhook; persist webhook metadata without duplicate processing
+      await supabase
+        .from("checkout_requests")
+        .update({
+          metadata: nextMetadata,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", checkoutData.id);
+    }
+  } else {
+    await supabase
+      .from("checkout_requests")
+      .update({
+        payment_status: paymentStatus,
+        payment_method: "flutterwave",
+        metadata: nextMetadata,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", checkoutData.id);
+  }
+
+  if (isFirstPaidTransition) {
+    const mergedCheckout = { ...checkoutData, payment_status: "paid", metadata: nextMetadata };
     await upsertSavedCardMethod({
       supabase,
       checkoutData: mergedCheckout,

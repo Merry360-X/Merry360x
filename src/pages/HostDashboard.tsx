@@ -35,9 +35,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useNotificationBadge, NotificationBadge } from "@/hooks/useNotificationBadge";
+import { resolvePropertyCoordinates } from "@/components/PropertyMap";
 
 interface MetricCardProps {
   label: string;
@@ -856,6 +855,8 @@ export default function HostDashboard() {
     hotel_id: "",
     location: "",
     address: "",
+    latitude: null as number | null,
+    longitude: null as number | null,
     listing_mode: "standard" as "standard" | "monthly_only",
     property_type: "Apartment",
     description: "",
@@ -989,6 +990,8 @@ export default function HostDashboard() {
       hotel_id: String((property as any).hotel_id || ""),
       location: String((property as any).location || (property as any).city || (property as any).neighborhood || ""),
       address,
+      latitude: (property as any).latitude != null ? Number((property as any).latitude) : ((property as any).lat != null ? Number((property as any).lat) : null),
+      longitude: (property as any).longitude != null ? Number((property as any).longitude) : ((property as any).lng != null ? Number((property as any).lng) : null),
       listing_mode: isMonthlyOnly ? ("monthly_only" as const) : ("standard" as const),
       property_type: String((property as any).property_type || "Apartment"),
       description,
@@ -2030,6 +2033,10 @@ export default function HostDashboard() {
       title: propertyName,
       location: propertyForm.location.trim(),
       address: propertyForm.address.trim() || null,
+      latitude: propertyForm.latitude ?? null,
+      longitude: propertyForm.longitude ?? null,
+      lat: propertyForm.latitude ?? null,
+      lng: propertyForm.longitude ?? null,
       property_type: propertyForm.property_type || "Apartment",
       description: propertyForm.description.trim() || null,
       price_per_night: normalizedNightlyPrice,
@@ -4449,6 +4456,10 @@ export default function HostDashboard() {
         description: form.description,
         location: form.location,
         address: form.address || null,
+        latitude: (form as any).latitude ?? null,
+        longitude: (form as any).longitude ?? null,
+        lat: (form as any).latitude ?? null,
+        lng: (form as any).longitude ?? null,
         property_type: form.property_type,
         price_per_night: form.price_per_night,
         price_per_person: form.price_per_person,
@@ -4534,6 +4545,28 @@ export default function HostDashboard() {
             <>
               <Input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Title" />
               <Input value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} placeholder="Location" />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Latitude</Label>
+                  <Input
+                    type="number"
+                    step="any"
+                    value={(form as any).latitude ?? ""}
+                    onChange={(e) => setForm((f: any) => ({ ...f, latitude: e.target.value ? Number(e.target.value) : null }))}
+                    placeholder="e.g. -6.1659"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Longitude</Label>
+                  <Input
+                    type="number"
+                    step="any"
+                    value={(form as any).longitude ?? ""}
+                    onChange={(e) => setForm((f: any) => ({ ...f, longitude: e.target.value ? Number(e.target.value) : null }))}
+                    placeholder="e.g. 39.2026"
+                  />
+                </div>
+              </div>
               <Textarea
                 value={form.description || ""}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
@@ -7008,6 +7041,81 @@ export default function HostDashboard() {
                     <p className="text-xs text-muted-foreground mt-2">
                       Tip: keep it general. Exact address can be shared after booking.
                     </p>
+                  </div>
+
+                  {/* GPS & Map Coordinates */}
+                  <div className="rounded-xl border border-border p-4 bg-muted/20 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <Label className="text-base font-medium flex items-center gap-1.5">
+                          <MapPin className="w-4 h-4 text-primary" /> Map Coordinates (GPS)
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Pins your property accurately on Google & OpenStreetMap with neighborhood boundary.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="text-xs h-8 gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                        onClick={() => {
+                          const res = resolvePropertyCoordinates(
+                            propertyForm.latitude,
+                            propertyForm.longitude,
+                            null,
+                            null,
+                            propertyForm.location,
+                            propertyForm.address
+                          );
+                          setPropertyForm((f) => ({
+                            ...f,
+                            latitude: res.lat,
+                            longitude: res.lng,
+                          }));
+                          toast({
+                            title: "Coordinates resolved",
+                            description: `Set to ${res.lat.toFixed(4)}, ${res.lng.toFixed(4)} (${res.areaName})`,
+                          });
+                        }}
+                      >
+                        Auto-detect GPS
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Latitude</Label>
+                        <Input
+                          type="number"
+                          step="any"
+                          value={propertyForm.latitude ?? ""}
+                          onChange={(e) =>
+                            setPropertyForm((f) => ({
+                              ...f,
+                              latitude: e.target.value ? Number(e.target.value) : null,
+                            }))
+                          }
+                          placeholder="e.g. -6.1659"
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Longitude</Label>
+                        <Input
+                          type="number"
+                          step="any"
+                          value={propertyForm.longitude ?? ""}
+                          onChange={(e) =>
+                            setPropertyForm((f) => ({
+                              ...f,
+                              longitude: e.target.value ? Number(e.target.value) : null,
+                            }))
+                          }
+                          placeholder="e.g. 39.2026"
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   <div>

@@ -30,12 +30,17 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import HostSocialActions from "@/components/HostSocialActions";
+import PropertyMap from "@/components/PropertyMap";
 
 type PropertyRow = {
   id: string;
   title: string;
   location: string;
   address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  lat?: number | null;
+  lng?: number | null;
   price_per_night: number;
   price_per_month?: number | null;
   available_for_monthly_rental?: boolean | null;
@@ -1889,6 +1894,14 @@ export default function PropertyDetails() {
                 <div>
                   <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2">{data.title}</h1>
                   <p className="text-muted-foreground">{extractNeighborhood(data.location)}</p>
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById("property-map-section")?.scrollIntoView({ behavior: "smooth" })}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline mt-1.5 transition"
+                  >
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span>{data.address || data.location} • View on map</span>
+                  </button>
                   {data.address ? (
                     <p className="text-xs text-muted-foreground mt-0.5">{data.address}</p>
                   ) : null}
@@ -2324,6 +2337,24 @@ export default function PropertyDetails() {
                     )
                   )}
                 </div>
+              </div>
+
+              {/* Location & Interactive Map Section */}
+              <div id="property-map-section" className="mt-8 bg-card rounded-xl shadow-card p-5 border border-border/60">
+                <PropertyMap
+                  title={data.title}
+                  location={data.location}
+                  address={data.address}
+                  latitude={data.latitude}
+                  longitude={data.longitude}
+                  lat={data.lat}
+                  lng={data.lng}
+                  imageUrl={data.main_image || data.images?.[0]}
+                  pricePerNight={data.price_per_night}
+                  currency={data.currency}
+                  showBoundary={true}
+                  boundaryRadiusMeters={450}
+                />
               </div>
 
               {/* Booking */}

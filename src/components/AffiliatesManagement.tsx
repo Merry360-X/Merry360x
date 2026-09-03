@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -21,7 +21,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   CheckCircle2, 
   Clock, 
@@ -34,9 +38,17 @@ import {
   Smartphone, 
   CreditCard,
   Building2,
-  Check
+  Check,
+  Settings,
+  Sparkles,
+  Sliders,
+  Save,
+  Loader2,
+  HelpCircle,
+  Eye
 } from "lucide-react";
 import { formatNumber } from "@/lib/money";
+import { usePartnerProgramSettings } from "@/hooks/usePartnerProgramSettings";
 
 export const AffiliatesManagement = () => {
   const { toast } = useToast();
@@ -44,6 +56,59 @@ export const AffiliatesManagement = () => {
   const [filter, setFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [mainTab, setMainTab] = useState<string>("partners");
+
+  // Dynamic Partner Program Settings
+  const { 
+    settings: partnerSettings, 
+    commissionRate: defaultCommissionRate, 
+    updateSettings: savePartnerSettings, 
+    isUpdating: isSavingSettings 
+  } = usePartnerProgramSettings();
+
+  const [settingRate, setSettingRate] = useState<number>(10);
+  const [settingCtaText, setSettingCtaText] = useState<string>("Become a Partner & Earn 10%");
+  const [settingHeadline, setSettingHeadline] = useState<string>("Earn 10% Commission on Every Referral");
+  const [settingDescription, setSettingDescription] = useState<string>("");
+  const [settingMinPayout, setSettingMinPayout] = useState<number>(5000);
+  const [settingIsActive, setSettingIsActive] = useState<boolean>(true);
+  const [applyToExistingPartners, setApplyToExistingPartners] = useState<boolean>(false);
+
+  // Sync state when partnerSettings loads
+  useEffect(() => {
+    if (partnerSettings) {
+      setSettingRate(Number(partnerSettings.commission_rate ?? 10));
+      setSettingCtaText(partnerSettings.cta_text || `Become a Partner & Earn ${partnerSettings.commission_rate ?? 10}%`);
+      setSettingHeadline(partnerSettings.headline || `Earn ${partnerSettings.commission_rate ?? 10}% Commission on Every Referral`);
+      setSettingDescription(partnerSettings.description || `Join our partner network. Share your unique referral code with travelers, guests, and audiences to earn ${partnerSettings.commission_rate ?? 10}% cash commissions on every completed booking.`);
+      setSettingMinPayout(Number(partnerSettings.minimum_payout_amount ?? 5000));
+      setSettingIsActive(partnerSettings.is_active !== false);
+    }
+  }, [partnerSettings]);
+
+  const handleRatePreset = (preset: number) => {
+    setSettingRate(preset);
+    // Suggest automatic updating of headline & CTA text if they matched the previous template
+    setSettingCtaText(`Become a Partner & Earn ${preset}%`);
+    setSettingHeadline(`Earn ${preset}% Commission on Every Referral`);
+  };
+
+  const handleSaveGlobalSettings = async () => {
+    try {
+      await savePartnerSettings({
+        newSettings: {
+          commission_rate: Number(settingRate),
+          cta_text: settingCtaText.trim() || `Become a Partner & Earn ${settingRate}%`,
+          headline: settingHeadline.trim() || `Earn ${settingRate}% Commission on Every Referral`,
+          description: settingDescription.trim(),
+          minimum_payout_amount: Number(settingMinPayout),
+          is_active: settingIsActive,
+        },
+        applyToAllExisting: applyToExistingPartners,
+      });
+    } catch (err: any) {
+      console.error("Save settings error:", err);
+    }
+  };
 
   // Fetch all affiliates
   const { data: affiliates = [], isLoading } = useQuery({
@@ -142,7 +207,7 @@ export const AffiliatesManagement = () => {
       .update({ 
         status,
         approved_at: status === 'active' ? new Date().toISOString() : null
-      })
+      } as any)
       .eq('id', affiliateId);
 
     if (error) {
@@ -303,6 +368,10 @@ export const AffiliatesManagement = () => {
               <DollarSign className="w-3.5 h-3.5" />
               Payout Requests ({payouts.length})
             </TabsTrigger>
+            <TabsTrigger value="settings" className="rounded-lg gap-1.5 text-xs font-medium">
+              <Settings className="w-3.5 h-3.5 text-rose-500" />
+              Program Settings & Rate ({defaultCommissionRate}%)
+            </TabsTrigger>
           </TabsList>
 
           {mainTab === "partners" && (
@@ -320,6 +389,38 @@ export const AffiliatesManagement = () => {
 
         {/* Partners Tab Content */}
         <TabsContent value="partners" className="space-y-4">
+          {/* Quick Platform Settings Summary Banner */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 bg-gradient-to-r from-rose-50/80 via-white to-rose-50/40 border border-rose-200/70 rounded-xl shadow-sm">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-600 flex items-center justify-center font-bold text-xs">
+                {defaultCommissionRate}%
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-900">Website Referral Commission:</span>
+                  <Badge variant="outline" className="bg-rose-100/50 text-rose-700 border-rose-300 text-[11px] font-bold">
+                    {defaultCommissionRate}% Default
+                  </Badge>
+                  <Badge variant="outline" className={partnerSettings.is_active ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]" : "bg-amber-50 text-amber-700 border-amber-200 text-[10px]"}>
+                    {partnerSettings.is_active ? "Publicly Active" : "Paused"}
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Home Button: <span className="font-medium text-slate-700">"{partnerSettings.cta_text}"</span> • Min Payout: <span className="font-mono font-medium text-slate-700">{formatNumber(partnerSettings.minimum_payout_amount)} RWF</span>
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setMainTab("settings")}
+              className="h-8 text-xs border-rose-200 text-rose-700 hover:bg-rose-100 hover:text-rose-800 gap-1.5 shrink-0"
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              Configure Settings & Rate
+            </Button>
+          </div>
+
           <div className="flex gap-2">
             <Button
               size="sm"
@@ -412,7 +513,7 @@ export const AffiliatesManagement = () => {
                       <TableCell>
                         <div className="text-xs space-y-0.5">
                           <span className="font-medium text-slate-800 uppercase block">
-                            {affiliate.payout_method || "MTN MoMo"}
+                            {affiliate.payout_method === "bank" ? "Bank Transfer" : "Mobile Money"}
                           </span>
                           <span className="text-slate-500 font-mono text-[11px] block">
                             {affiliate.payout_phone || affiliate.payout_account_number || affiliate.phone || "—"}
@@ -534,6 +635,310 @@ export const AffiliatesManagement = () => {
               </Table>
             </div>
           )}
+        </TabsContent>
+
+        {/* Program Settings Tab Content */}
+        <TabsContent value="settings" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left 2 Cols: Form Config */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Commission Rate Card */}
+              <Card className="border-slate-200 bg-white shadow-sm">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-sm border border-rose-100">
+                        <Percent className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base font-bold text-slate-900">
+                          Default Partner Commission Rate
+                        </CardTitle>
+                        <CardDescription className="text-xs">
+                          Configure the global percentage partners earn on each completed booking
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-xs font-mono font-bold bg-rose-50 text-rose-700 border-rose-200">
+                      Active: {defaultCommissionRate}%
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label className="text-xs font-semibold text-slate-700 mb-1.5 block">
+                      Commission Percentage (%)
+                    </Label>
+                    <div className="flex items-center gap-3">
+                      <div className="relative w-36">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.5"
+                          value={settingRate}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setSettingRate(val);
+                          }}
+                          className="font-mono text-base font-bold text-slate-900 pr-8"
+                        />
+                        <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-bold">%</span>
+                      </div>
+
+                      {/* Quick Presets */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {[5, 8, 10, 12, 15, 20, 25].map((rate) => (
+                          <Button
+                            key={rate}
+                            type="button"
+                            size="sm"
+                            variant={settingRate === rate ? "default" : "outline"}
+                            onClick={() => handleRatePreset(rate)}
+                            className={`h-8 px-2.5 text-xs font-semibold ${
+                              settingRate === rate ? "bg-rose-600 text-white hover:bg-rose-700" : "text-slate-600 hover:text-slate-900"
+                            }`}
+                          >
+                            {rate}%
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-2">
+                      New referral partners will automatically be assigned this commission percentage upon registration.
+                    </p>
+                  </div>
+
+                  {/* Sync Existing Partners Option */}
+                  <div className="pt-3 border-t border-slate-100 flex items-start gap-2.5 bg-slate-50/70 p-3 rounded-lg">
+                    <Checkbox
+                      id="applyToExistingPartners"
+                      checked={applyToExistingPartners}
+                      onCheckedChange={(checked) => setApplyToExistingPartners(Boolean(checked))}
+                      className="mt-0.5"
+                    />
+                    <div className="space-y-0.5">
+                      <label htmlFor="applyToExistingPartners" className="text-xs font-semibold text-slate-900 cursor-pointer">
+                        Also update all existing active partners ({affiliates.filter((a: any) => a.status === 'active').length} partners)
+                      </label>
+                      <p className="text-[11px] text-slate-500">
+                        When enabled, saving will synchronize the new {settingRate}% rate to all current active referral partners immediately.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Marketing & Content Customization */}
+              <Card className="border-slate-200 bg-white shadow-sm">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold text-slate-900">
+                        Website Marketing & Promo Texts
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Customize how the referral opportunity is promoted across the website
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label className="text-xs font-semibold text-slate-700 mb-1.5 block">
+                      Homepage Hero CTA Button Label
+                    </Label>
+                    <Input
+                      value={settingCtaText}
+                      onChange={(e) => setSettingCtaText(e.target.value)}
+                      placeholder="e.g. Become a Partner & Earn 10%"
+                      className="text-xs"
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Displayed on the main home screen CTA below story avatars.
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs font-semibold text-slate-700 mb-1.5 block">
+                      Landing Page Headline
+                    </Label>
+                    <Input
+                      value={settingHeadline}
+                      onChange={(e) => setSettingHeadline(e.target.value)}
+                      placeholder="e.g. Earn 10% Commission on Every Referral"
+                      className="text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <Label className="text-xs font-semibold text-slate-700 mb-1.5 block">
+                      Program Description & Terms Summary
+                    </Label>
+                    <Textarea
+                      value={settingDescription}
+                      onChange={(e) => setSettingDescription(e.target.value)}
+                      rows={3}
+                      placeholder="Describe benefits and payout schedule..."
+                      className="text-xs"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Payout & Status Controls */}
+              <Card className="border-slate-200 bg-white shadow-sm">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+                      <DollarSign className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold text-slate-900">
+                        Payout Rules & Status
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Set minimum payout thresholds and toggle program availability
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-xs font-semibold text-slate-700 mb-1.5 block">
+                        Minimum Payout Request (RWF)
+                      </Label>
+                      <Input
+                        type="number"
+                        min="1000"
+                        step="500"
+                        value={settingMinPayout}
+                        onChange={(e) => setSettingMinPayout(parseFloat(e.target.value) || 0)}
+                        className="font-mono text-xs font-bold"
+                      />
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Partners must accumulate at least this amount before requesting a payout.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col justify-between p-3 border rounded-xl bg-slate-50/50">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-slate-900 block">
+                          Program Availability
+                        </Label>
+                        <p className="text-[11px] text-slate-500">
+                          {settingIsActive ? "Program is visible and accepting new partners" : "Program is paused; hides CTA buttons"}
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between pt-2">
+                        <span className="text-xs font-medium text-slate-700">
+                          {settingIsActive ? "Active" : "Paused"}
+                        </span>
+                        <Switch
+                          checked={settingIsActive}
+                          onCheckedChange={setSettingIsActive}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Save Action */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <Button
+                  onClick={handleSaveGlobalSettings}
+                  disabled={isSavingSettings}
+                  className="h-10 px-6 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs rounded-xl shadow-md gap-2"
+                >
+                  {isSavingSettings ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Saving Settings...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Save Partner Program Settings
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Right 1 Col: Live Preview */}
+            <div className="space-y-4">
+              <Card className="border-slate-200 bg-white shadow-sm sticky top-4">
+                <CardHeader className="pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-slate-500" />
+                    <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                      Live Website Preview
+                    </CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4 space-y-4">
+                  {/* Homepage Button Preview */}
+                  <div>
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">
+                      Homepage CTA Button Preview
+                    </span>
+                    <div className="p-6 bg-slate-950 rounded-2xl flex items-center justify-center border border-slate-800">
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        className="bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 hover:text-white transition-all shadow-lg pointer-events-none text-xs font-medium"
+                      >
+                        <TrendingUp className="w-4 h-4 mr-2" />
+                        {settingCtaText || `Become a Partner & Earn ${settingRate}%`}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Landing Hero Preview */}
+                  <div>
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">
+                      Partner Page Hero Preview
+                    </span>
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-600 text-[10px] font-semibold uppercase">
+                        <Sparkles className="w-3 h-3" />
+                        Merry360x Partner Program
+                      </div>
+                      <h4 className="font-bold text-sm text-slate-900 leading-tight">
+                        Earn <span className="text-rose-500">{settingRate}% Commission</span> on Every Referral
+                      </h4>
+                      <p className="text-[11px] text-slate-600 line-clamp-3">
+                        {settingDescription || `Join our partner network. Share your unique referral code to earn ${settingRate}% commissions.`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Quick Summary Info */}
+                  <div className="p-3 bg-rose-50/50 border border-rose-100 rounded-lg space-y-1.5 text-xs">
+                    <div className="flex justify-between text-slate-600">
+                      <span>Configured Rate:</span>
+                      <strong className="text-rose-600 font-mono">{settingRate}%</strong>
+                    </div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>Min Payout:</span>
+                      <strong className="font-mono text-slate-800">{formatNumber(settingMinPayout)} RWF</strong>
+                    </div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>Program Status:</span>
+                      <strong className={settingIsActive ? "text-emerald-600" : "text-amber-600"}>
+                        {settingIsActive ? "Active" : "Paused"}
+                      </strong>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

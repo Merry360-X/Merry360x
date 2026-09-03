@@ -4419,7 +4419,7 @@ For support, contact: support@merry360x.com
               <FileText className="w-4 h-4" /> Legal Content
             </TabsTrigger>
             <TabsTrigger value="affiliates" className="gap-1">
-              <Users className="w-4 h-4" /> Referrals
+              <Users className="w-4 h-4" /> Referrals & Partner Program
             </TabsTrigger>
           </TabsList>
 

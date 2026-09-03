@@ -18,6 +18,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getTourPricingModel } from "@/lib/tour-pricing";
 import { ChevronLeft, ChevronRight, Plus, TrendingUp, X } from "lucide-react";
 import heroVideo from "@/assets/merry.mp4";
+import { usePartnerProgramSettings } from "@/hooks/usePartnerProgramSettings";
 
 type HomeTour = {
   id: string;
@@ -75,6 +76,7 @@ const Index = () => {
   const { user } = useAuth();
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { ctaText, commissionRate } = usePartnerProgramSettings();
   const [activeStoryModalIndex, setActiveStoryModalIndex] = useState<number | null>(null);
   const [stayCityInput, setStayCityInput] = useState("");
   const [stayCity, setStayCity] = useState("");
@@ -381,7 +383,7 @@ const Index = () => {
                   className="w-full max-w-[22rem] sm:w-auto bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 hover:text-white transition-all shadow-lg"
                 >
                   <TrendingUp className="w-5 h-5 mr-2" />
-                  Become a Partner & Earn 10%
+                  {ctaText || `Become a Partner & Earn ${commissionRate}%`}
                 </Button>
               </div>
             </div>

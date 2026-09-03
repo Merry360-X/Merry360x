@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ArrowRight, Bell, CheckCircle2, Facebook, Instagram, Linkedin, Mail, Sparkles, Youtube } from "lucide-react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { FormEvent, useState } from "react";
+import { usePartnerProgramSettings } from "@/hooks/usePartnerProgramSettings";
 
 type IconProps = { className?: string };
 
@@ -75,6 +76,7 @@ const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.
 
 const Footer = () => {
   const { t } = useTranslation();
+  const { commissionRate } = usePartnerProgramSettings();
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [newsletterError, setNewsletterError] = useState<string | null>(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -297,7 +299,7 @@ const Footer = () => {
               </li>
               <li>
                 <Link to="/become-referral" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                  Partner Referral Program (10%)
+                  Partner Referral Program ({commissionRate}%)
                 </Link>
               </li>
             </ul>
