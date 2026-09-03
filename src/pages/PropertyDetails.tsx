@@ -338,24 +338,24 @@ export default function PropertyDetails() {
     queryFn: async () => {
       const hostId = String(data?.host_id ?? "");
       if (!hostId) return null;
-      
+
       const { data: prof, error } = await supabase
         .from("profiles")
         .select("user_id, full_name, nickname, avatar_url, bio, created_at")
         .eq("user_id", hostId)
         .maybeSingle();
-      
+
       if (error) throw error;
-      
+
       return prof as
         | {
-            user_id: string;
-            full_name: string | null;
-            nickname?: string | null;
-            avatar_url: string | null;
-            bio: string | null;
-            created_at: string;
-          }
+          user_id: string;
+          full_name: string | null;
+          nickname?: string | null;
+          avatar_url: string | null;
+          bio: string | null;
+          created_at: string;
+        }
         | null;
     },
   });
@@ -368,7 +368,7 @@ export default function PropertyDetails() {
     queryFn: async () => {
       const hostId = String(data?.host_id ?? "");
       if (!hostId) return false;
-      
+
       const { data: app, error } = await supabase
         .from("host_applications")
         .select("profile_complete")
@@ -376,7 +376,7 @@ export default function PropertyDetails() {
         .order("profile_complete", { ascending: false })
         .limit(1)
         .maybeSingle();
-      
+
       if (error) return false;
       return app?.profile_complete === true;
     },
@@ -617,14 +617,14 @@ export default function PropertyDetails() {
           .in("property_id", queryIds)
           .order("start_date", { ascending: true })
       ]);
-      
+
       const blocked = (blockedResult.data || []).map(d => ({
         start_date: d.start_date,
         end_date: d.end_date,
         reason: d.reason || "Blocked by host",
         source: "blocked"
       }));
-      
+
       const booked = (bookingsResult.data || []).map(d => ({
         start_date: d.check_in,
         end_date: toLastNightDate(d.check_in, d.check_out),
@@ -638,7 +638,7 @@ export default function PropertyDetails() {
         reason: v.reason,
         source: v.source || "blocked"
       }));
-      
+
       return normalizeAndDeduplicate(
         [...blocked, ...booked, ...fromView] as Array<{ start_date: string; end_date: string; reason: string | null; source?: string }>
       );
@@ -668,7 +668,7 @@ export default function PropertyDetails() {
   const getCustomPriceForDate = useCallback((date: Date): number | null => {
     if (!customPrices.length) return null;
     const dateStr = formatDateOnlyLocal(date);
-    
+
     for (const cp of customPrices) {
       const startStr = String(cp.start_date).slice(0, 10);
       const endStr = String(cp.end_date).slice(0, 10);
@@ -697,7 +697,7 @@ export default function PropertyDetails() {
   const isDateBlocked = useCallback((date: Date) => {
     if (!date || blockedDates.length === 0) return false;
     const dateStr = formatDateOnlyLocal(date);
-    
+
     for (const blocked of blockedDates) {
       const startStr = String(blocked.start_date).slice(0, 10);
       const endStr = String(blocked.end_date).slice(0, 10);
@@ -818,20 +818,20 @@ export default function PropertyDetails() {
   // Check if selected dates overlap with blocked dates
   useEffect(() => {
     if (!checkIn || !checkOut || blockedDates.length === 0) return;
-    
+
     const selectedStart = new Date(checkIn);
     const selectedEnd = new Date(checkOut);
-    
+
     for (const blocked of blockedDates) {
       const blockedStart = new Date(blocked.start_date);
       const blockedEnd = new Date(blocked.end_date);
-      
+
       if (doesStayOverlapBlockedRange(selectedStart, selectedEnd, blockedStart, blockedEnd)) {
         const startDate = blockedStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         const endDate = blockedEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        
+
         let message = `This property is not available from ${startDate} to ${endDate}`;
-        
+
         if (blocked.reason) {
           if (blocked.reason === 'booked') {
             message += '. Already booked for these dates';
@@ -843,7 +843,7 @@ export default function PropertyDetails() {
             message += `. ${blocked.reason}`;
           }
         }
-        
+
         toast({
           variant: "destructive",
           title: "Dates Unavailable",
@@ -1056,18 +1056,18 @@ export default function PropertyDetails() {
         return monthlyPrice * stayUnits.months;
       }
     }
-    
+
     // Calculate total considering custom prices for each night
     let total = 0;
     const defaultPrice = Number(data.price_per_night ?? 0);
-    
+
     for (let i = 0; i < nights; i++) {
       const currentDate = new Date(checkIn);
       currentDate.setDate(currentDate.getDate() + i);
       const customPrice = getCustomPriceForDate(currentDate);
       total += customPrice !== null ? customPrice : defaultPrice;
     }
-    
+
     return total;
   }, [data, nights, checkIn, checkOut, getCustomPriceForDate, isMonthlyOnlyListing, stayUnits.months]);
 
@@ -1173,17 +1173,17 @@ export default function PropertyDetails() {
     const selectedEnd = new Date(checkOut);
     selectedStart.setHours(0, 0, 0, 0);
     selectedEnd.setHours(0, 0, 0, 0);
-    
+
     for (const blocked of blockedDates) {
       const blockedStart = new Date(blocked.start_date);
       const blockedEnd = new Date(blocked.end_date);
       blockedStart.setHours(0, 0, 0, 0);
       blockedEnd.setHours(0, 0, 0, 0);
-      
+
       if (doesStayOverlapBlockedRange(selectedStart, selectedEnd, blockedStart, blockedEnd)) {
         const startDate = blockedStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         const endDate = blockedEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        
+
         toast({
           variant: "destructive",
           title: "Dates Not Available",
@@ -1317,7 +1317,7 @@ export default function PropertyDetails() {
       } else {
         toursData = (toursPrimary.data ?? []) as Array<Record<string, unknown>>;
       }
-      
+
       // Also get tour_packages - schema-safe with fallback
       const packagesPrimary = await supabase
         .from("tour_packages")
@@ -1343,7 +1343,7 @@ export default function PropertyDetails() {
       } else {
         packagesData = (packagesPrimary.data ?? []) as Array<Record<string, unknown>>;
       }
-      
+
       // Combine and normalize both
       const tours = (toursData ?? []).map((t) => ({
         id: t.id,
@@ -1356,7 +1356,7 @@ export default function PropertyDetails() {
         images: t.images,
         source: "tours" as const
       }));
-      
+
       const packages = (packagesData ?? []).map(p => ({
         id: p.id,
         title: p.title,
@@ -1373,7 +1373,7 @@ export default function PropertyDetails() {
         if (tour.max_guests && guests > 0 && tour.max_guests < guests) return false;
         return true;
       });
-      
+
       // Return combined list, prioritize packages
       return filteredByStay.slice(0, 6) as Array<{
         id: string;
@@ -1539,136 +1539,135 @@ export default function PropertyDetails() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* Gallery + content */}
             <div className="lg:col-span-7 space-y-6">
-            <div className="bg-card rounded-xl shadow-card overflow-hidden">
-              {media[0] ? (
-                <button
-                  type="button"
-                  className="w-full"
-                  onClick={() => openViewer(0)}
-                  aria-label={t("propertyDetails.openPhoto")}
-                >
-                  {isVideoUrl(media[0]) ? (
-                    <video
-                      src={media[0]}
-                      className="w-full h-[320px] object-cover"
-                      muted
-                      playsInline
-                      preload="metadata"
-                    />
-                  ) : (
-                    <img
-                      src={optimizedImageUrl(media[0], 1400, 900)}
-                      alt={t("propertyDetails.photoAlt")}
-                      className="w-full h-[320px] object-cover"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                  )}
-                </button>
-              ) : (
-                <div className="w-full h-[320px] bg-gradient-to-br from-muted via-muted/70 to-muted/40" />
-              )}
-
-              {media.length > 1 ? (
-                <div className="p-4 grid grid-cols-3 sm:grid-cols-4 gap-3">
-                  {media.map((src, idx) => (
-                    <button
-                      key={`${src}-${idx}`}
-                      type="button"
-                      className="rounded-lg overflow-hidden"
-                      onClick={() => openViewer(idx)}
-                      aria-label={t("propertyDetails.openPhoto")}
-                    >
-                      {isVideoUrl(src) ? (
-                        <video src={src} className="h-28 w-full object-cover" muted playsInline preload="metadata" />
-                      ) : (
-                        <img
-                          src={optimizedImageUrl(src, 520, 360)}
-                          alt={t("propertyDetails.photoAlt")}
-                          className="h-28 w-full object-cover"
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-
-            <Dialog open={viewerOpen} onOpenChange={setViewerOpen}>
-              <DialogContent className="p-0 w-[92vw] max-w-6xl overflow-hidden">
-                <div className="bg-black relative">
-                  {media.length ? (
-                    isVideoUrl(media[viewerIdx] ?? "") ? (
+              <div className="bg-card rounded-xl shadow-card overflow-hidden">
+                {media[0] ? (
+                  <button
+                    type="button"
+                    className="w-full"
+                    onClick={() => openViewer(0)}
+                    aria-label={t("propertyDetails.openPhoto")}
+                  >
+                    {isVideoUrl(media[0]) ? (
                       <video
-                        src={media[viewerIdx]}
-                        className="w-full h-[80vh] object-contain"
-                        controls
+                        src={media[0]}
+                        className="w-full h-[320px] object-cover"
+                        muted
                         playsInline
+                        preload="metadata"
                       />
                     ) : (
                       <img
-                        src={optimizedImageUrl(media[viewerIdx], 1800)}
-                        alt={data?.title ?? "Image"}
-                        className="w-full h-[80vh] object-contain"
+                        src={optimizedImageUrl(media[0], 1400, 900)}
+                        alt={t("propertyDetails.photoAlt")}
+                        className="w-full h-[320px] object-cover"
+                        loading="lazy"
                         decoding="async"
                       />
-                    )
-                  ) : null}
+                    )}
+                  </button>
+                ) : (
+                  <div className="w-full h-[320px] bg-gradient-to-br from-muted via-muted/70 to-muted/40" />
+                )}
 
-                  {media.length > 1 ? (
-                    <>
+                {media.length > 1 ? (
+                  <div className="p-4 grid grid-cols-3 sm:grid-cols-4 gap-3">
+                    {media.map((src, idx) => (
                       <button
+                        key={`${src}-${idx}`}
                         type="button"
-                        className="absolute left-3 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-black/50 text-white flex items-center justify-center"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setViewerIdx((v) => (v - 1 + media.length) % media.length);
-                        }}
-                        aria-label="Previous"
+                        className="rounded-lg overflow-hidden"
+                        onClick={() => openViewer(idx)}
+                        aria-label={t("propertyDetails.openPhoto")}
                       >
-                        <ChevronLeft className="w-6 h-6" />
+                        {isVideoUrl(src) ? (
+                          <video src={src} className="h-28 w-full object-cover" muted playsInline preload="metadata" />
+                        ) : (
+                          <img
+                            src={optimizedImageUrl(src, 520, 360)}
+                            alt={t("propertyDetails.photoAlt")}
+                            className="h-28 w-full object-cover"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        )}
                       </button>
-                      <button
-                        type="button"
-                        className="absolute right-3 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-black/50 text-white flex items-center justify-center"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setViewerIdx((v) => (v + 1) % media.length);
-                        }}
-                        aria-label="Next"
-                      >
-                        <ChevronRight className="w-6 h-6" />
-                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
 
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/40 backdrop-blur px-3 py-2 overflow-x-auto">
-                        <div className="flex items-center gap-2">
-                          {media.map((src, idx) => (
-                            <button
-                              key={`${src}-thumb-${idx}`}
-                              type="button"
-                              onClick={() => setViewerIdx(idx)}
-                              className={`h-14 w-20 rounded-md overflow-hidden border ${
-                                idx === viewerIdx ? "border-white" : "border-white/20"
-                              }`}
-                            >
-                              {isVideoUrl(src) ? (
-                                <video src={src} className="h-full w-full object-cover" muted playsInline preload="metadata" />
-                              ) : (
-                                <img src={optimizedImageUrl(src, 160, 120)} className="h-full w-full object-cover" alt="thumb" loading="lazy" decoding="async" />
-                              )}
-                            </button>
-                          ))}
+              <Dialog open={viewerOpen} onOpenChange={setViewerOpen}>
+                <DialogContent className="p-0 w-[92vw] max-w-6xl overflow-hidden">
+                  <div className="bg-black relative">
+                    {media.length ? (
+                      isVideoUrl(media[viewerIdx] ?? "") ? (
+                        <video
+                          src={media[viewerIdx]}
+                          className="w-full h-[80vh] object-contain"
+                          controls
+                          playsInline
+                        />
+                      ) : (
+                        <img
+                          src={optimizedImageUrl(media[viewerIdx], 1800)}
+                          alt={data?.title ?? "Image"}
+                          className="w-full h-[80vh] object-contain"
+                          decoding="async"
+                        />
+                      )
+                    ) : null}
+
+                    {media.length > 1 ? (
+                      <>
+                        <button
+                          type="button"
+                          className="absolute left-3 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-black/50 text-white flex items-center justify-center"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setViewerIdx((v) => (v - 1 + media.length) % media.length);
+                          }}
+                          aria-label="Previous"
+                        >
+                          <ChevronLeft className="w-6 h-6" />
+                        </button>
+                        <button
+                          type="button"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-black/50 text-white flex items-center justify-center"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setViewerIdx((v) => (v + 1) % media.length);
+                          }}
+                          aria-label="Next"
+                        >
+                          <ChevronRight className="w-6 h-6" />
+                        </button>
+
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/40 backdrop-blur px-3 py-2 overflow-x-auto">
+                          <div className="flex items-center gap-2">
+                            {media.map((src, idx) => (
+                              <button
+                                key={`${src}-thumb-${idx}`}
+                                type="button"
+                                onClick={() => setViewerIdx(idx)}
+                                className={`h-14 w-20 rounded-md overflow-hidden border ${idx === viewerIdx ? "border-white" : "border-white/20"
+                                  }`}
+                              >
+                                {isVideoUrl(src) ? (
+                                  <video src={src} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                                ) : (
+                                  <img src={optimizedImageUrl(src, 160, 120)} className="h-full w-full object-cover" alt="thumb" loading="lazy" decoding="async" />
+                                )}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-              </DialogContent>
-            </Dialog>
+                      </>
+                    ) : null}
+                  </div>
+                </DialogContent>
+              </Dialog>
 
               {media.length > 1 || data.description ? (
                 <div className="bg-card rounded-xl shadow-card p-5">
@@ -1893,18 +1892,17 @@ export default function PropertyDetails() {
               <div className="flex items-start justify-between gap-6">
                 <div>
                   <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2">{data.title}</h1>
-                  <p className="text-muted-foreground">{extractNeighborhood(data.location)}</p>
-                  <button
+                  {extractNeighborhood(data.location) && extractNeighborhood(data.location) !== data.title && extractNeighborhood(data.location) !== (data.address || data.location) ? (
+                    <p className="text-muted-foreground">{extractNeighborhood(data.location)}</p>
+                  ) : null}
+                  {/* <button
                     type="button"
                     onClick={() => document.getElementById("property-map-section")?.scrollIntoView({ behavior: "smooth" })}
                     className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline mt-1.5 transition"
                   >
                     <MapPin className="w-3.5 h-3.5" />
                     <span>{data.address || data.location} • View on map</span>
-                  </button>
-                  {data.address ? (
-                    <p className="text-xs text-muted-foreground mt-0.5">{data.address}</p>
-                  ) : null}
+                  </button> */}
                 </div>
                 <div className="text-right">
                   <div className="text-lg font-bold text-primary">
@@ -2105,9 +2103,8 @@ export default function PropertyDetails() {
                               />
                             ) : null}
                             <div
-                              className={`w-16 h-16 md:w-20 md:h-20 rounded-full border border-border items-center justify-center ${
-                                hostProfile?.avatar_url ? 'hidden' : 'flex'
-                              } ${hostProfile?.full_name ? 'bg-primary/10' : 'bg-muted'}`}
+                              className={`w-16 h-16 md:w-20 md:h-20 rounded-full border border-border items-center justify-center ${hostProfile?.avatar_url ? 'hidden' : 'flex'
+                                } ${hostProfile?.full_name ? 'bg-primary/10' : 'bg-muted'}`}
                             >
                               {hostProfile?.full_name ? (
                                 <span className="text-primary font-semibold text-lg">
@@ -2210,11 +2207,10 @@ export default function PropertyDetails() {
                                 {[1, 2, 3, 4, 5].map((star) => (
                                   <Star
                                     key={star}
-                                    className={`w-4 h-4 ${
-                                      star <= r.rating
+                                    className={`w-4 h-4 ${star <= r.rating
                                         ? "fill-yellow-400 text-yellow-400"
                                         : "fill-gray-200 text-gray-200 dark:fill-gray-700 dark:text-gray-700"
-                                    }`}
+                                      }`}
                                   />
                                 ))}
                               </div>
@@ -2574,72 +2570,72 @@ export default function PropertyDetails() {
                       const bookingCtaLabel = booking
                         ? t("common.processing")
                         : isStayBlocked
-                        ? "Dates Unavailable"
-                        : addedAddOn
-                        ? isInTripCart
-                          ? t("propertyDetails.checkoutTrip")
-                          : t("propertyDetails.addStayToCart")
-                        : t("common.bookNow");
+                          ? "Dates Unavailable"
+                          : addedAddOn
+                            ? isInTripCart
+                              ? t("propertyDetails.checkoutTrip")
+                              : t("propertyDetails.addStayToCart")
+                            : t("common.bookNow");
 
                       return (
                         <>
-                    <Button
-                      variant="outline"
-                      onClick={addPropertyToTripCart}
-                      disabled={booking}
-                      type="button"
-                      className="h-11 flex-1 sm:flex-none"
-                    >
-                      {isInTripCart ? t("propertyDetails.inTripCart") : t("propertyDetails.addToTripCart")}
-                    </Button>
-                    {!isMonthlyOnlyListing && breakfastAddon.breakfastEnabled ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button type="button" disabled={bookingDisabled} className="h-11 flex-1 sm:flex-none">
-                            {bookingCtaLabel}
+                          <Button
+                            variant="outline"
+                            onClick={addPropertyToTripCart}
+                            disabled={booking}
+                            type="button"
+                            className="h-11 flex-1 sm:flex-none"
+                          >
+                            {isInTripCart ? t("propertyDetails.inTripCart") : t("propertyDetails.addToTripCart")}
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            disabled={bookingDisabled}
-                            onSelect={(e) => {
-                              e.preventDefault();
-                              setBreakfastPlan("no_breakfast");
-                            }}
-                          >
-                            {breakfastPlan === "no_breakfast" ? "No breakfast (Free) - selected" : "No breakfast (Free)"}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={bookingDisabled}
-                            onSelect={(e) => {
-                              e.preventDefault();
-                              setBreakfastPlan("with_breakfast");
-                            }}
-                          >
-                            {breakfastPlan === "with_breakfast"
-                              ? `With breakfast (+${displayMoney(Number(breakfastAddon.breakfastPricePerNight), String(data.currency ?? "RWF"))} / night) - selected`
-                              : `With breakfast (+${displayMoney(Number(breakfastAddon.breakfastPricePerNight), String(data.currency ?? "RWF"))} / night)`}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={bookingDisabled}
-                            onSelect={() => {
-                              void submitBooking();
-                            }}
-                          >
-                            Continue to checkout
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : (
-                      <Button
-                        onClick={() => void submitBooking()}
-                        disabled={bookingDisabled}
-                        type="button"
-                        className="h-11 flex-1 sm:flex-none"
-                      >
-                        {bookingCtaLabel}
-                      </Button>
-                    )}
+                          {!isMonthlyOnlyListing && breakfastAddon.breakfastEnabled ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button type="button" disabled={bookingDisabled} className="h-11 flex-1 sm:flex-none">
+                                  {bookingCtaLabel}
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  disabled={bookingDisabled}
+                                  onSelect={(e) => {
+                                    e.preventDefault();
+                                    setBreakfastPlan("no_breakfast");
+                                  }}
+                                >
+                                  {breakfastPlan === "no_breakfast" ? "No breakfast (Free) - selected" : "No breakfast (Free)"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={bookingDisabled}
+                                  onSelect={(e) => {
+                                    e.preventDefault();
+                                    setBreakfastPlan("with_breakfast");
+                                  }}
+                                >
+                                  {breakfastPlan === "with_breakfast"
+                                    ? `With breakfast (+${displayMoney(Number(breakfastAddon.breakfastPricePerNight), String(data.currency ?? "RWF"))} / night) - selected`
+                                    : `With breakfast (+${displayMoney(Number(breakfastAddon.breakfastPricePerNight), String(data.currency ?? "RWF"))} / night)`}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={bookingDisabled}
+                                  onSelect={() => {
+                                    void submitBooking();
+                                  }}
+                                >
+                                  Continue to checkout
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
+                            <Button
+                              onClick={() => void submitBooking()}
+                              disabled={bookingDisabled}
+                              type="button"
+                              className="h-11 flex-1 sm:flex-none"
+                            >
+                              {bookingCtaLabel}
+                            </Button>
+                          )}
                         </>
                       );
                     })()}
@@ -2671,11 +2667,10 @@ export default function PropertyDetails() {
                       {myPoints >= 5 ? (
                         <button
                           type="button"
-                          className={`text-xs px-3 py-2 rounded-full border transition-colors ${
-                            usePoints
+                          className={`text-xs px-3 py-2 rounded-full border transition-colors ${usePoints
                               ? "bg-primary/10 border-primary text-primary"
                               : "bg-background border-border text-muted-foreground hover:text-foreground hover:border-primary"
-                          }`}
+                            }`}
                           onClick={() => setUsePoints((v) => !v)}
                         >
                           {usePoints ? "Using 5 points (5% off)" : "Use 5 points (5% off)"}

@@ -260,24 +260,6 @@ export function PropertyMap({
 
     const marker = L.marker([coords.lat, coords.lng], { icon: customIcon }).addTo(layerGroup);
 
-    // Popup content
-    const popupHtml = `
-      <div class="p-2 max-w-[240px] font-sans">
-        ${imageUrl ? `<img src="${imageUrl}" class="w-full h-24 object-cover rounded-md mb-2 shadow-sm" alt="Property" />` : ""}
-        <h4 class="font-bold text-sm text-gray-900 leading-snug">${title}</h4>
-        <p class="text-xs text-gray-600 mt-1 flex items-center gap-1">
-          <span>📍</span> ${address || location}
-        </p>
-        <div class="mt-2.5 pt-2 border-t border-gray-100 flex items-center justify-between">
-          <a href="${googleDirectionsUrl}" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-rose-600 hover:underline flex items-center gap-1">
-            Get Directions ↗
-          </a>
-        </div>
-      </div>
-    `;
-
-    marker.bindPopup(popupHtml);
-
     // Invalidate size after layout completes
     const timer = setTimeout(() => {
       map.invalidateSize();
@@ -314,56 +296,8 @@ export function PropertyMap({
   return (
     <div className={`space-y-4 ${className}`}>
       {/* Map Section Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg md:text-xl font-bold text-foreground">Where you&apos;ll be</h2>
-            <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs gap-1">
-              <Compass className="w-3 h-3" />
-              {coords.areaName}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1.5">
-            <MapPin className="w-4 h-4 text-primary shrink-0" />
-            <span>{address || location}</span>
-          </p>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-1.5 text-xs h-9 bg-card hover:bg-muted"
-            onClick={() => setMapLayer(mapLayer === "streets" ? "satellite" : "streets")}
-          >
-            <Layers className="w-3.5 h-3.5 text-muted-foreground" />
-            <span>{mapLayer === "streets" ? "Satellite View" : "Street Map"}</span>
-          </Button>
-
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-1.5 text-xs h-9 bg-card hover:bg-muted"
-            asChild
-          >
-            <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
-              <span>Google Maps</span>
-            </a>
-          </Button>
-
-          <Button
-            size="sm"
-            className="gap-1.5 text-xs h-9 shadow-sm"
-            asChild
-          >
-            <a href={googleDirectionsUrl} target="_blank" rel="noopener noreferrer">
-              <Navigation className="w-3.5 h-3.5" />
-              <span>Directions</span>
-            </a>
-          </Button>
-        </div>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg md:text-xl font-bold text-foreground">Where you&apos;ll be</h2>
       </div>
 
       {/* Map Container */}
