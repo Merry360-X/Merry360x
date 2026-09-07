@@ -187,7 +187,8 @@ class SessionController extends ChangeNotifier {
             }());
           }
         } else {
-          // Signed out — clear the persistent flag.
+          // Signed out — clear notifications and persistent flag.
+          NotificationService.instance.clear();
           _hasEverAuthenticated = false;
           unawaited(() async {
             final prefs = await SharedPreferences.getInstance();
@@ -638,6 +639,17 @@ class SessionController extends ChangeNotifier {
     watchUser('bookings-host', 'bookings', filterColumn: 'host_id');
     watchUser('profile', 'profiles', filterColumn: 'user_id');
     watchUser('roles', 'user_roles', filterColumn: 'user_id');
+    watchUser(
+      'notifications',
+      'notifications',
+      filterColumn: 'user_id',
+      onChanged: () {
+        _scheduleRealtimeRefresh();
+        if (_userId.isNotEmpty) {
+          NotificationService.instance.loadNotifications(userId: _userId);
+        }
+      },
+    );
     watchUser(
       'support-tickets',
       'support_tickets',

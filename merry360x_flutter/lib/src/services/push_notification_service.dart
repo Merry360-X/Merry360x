@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'notification_service.dart';
+
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
@@ -139,10 +141,30 @@ class PushNotificationService {
         sound: true,
       );
 
-      // Foreground messages — suppress system push, emit for in-app banner
+      // Foreground messages — show custom in-app banner overlay
       _foregroundSub = FirebaseMessaging.onMessage.listen((message) {
-        // Emit data so the in-app banner overlay can show it
-        onNotificationTap.add(Map<String, String>.from(message.data));
+        final data = Map<String, dynamic>.from(message.data);
+        final title = message.notification?.title ?? data['title']?.toString() ?? 'Merry360x';
+        final body = message.notification?.body ?? data['body']?.toString() ?? '';
+        final type = data['type']?.toString() ?? data['notification_type']?.toString() ?? '';
+        final screenRoute = data['screen_route']?.toString() ?? data['screenRoute']?.toString();
+
+        final notif = AppNotification(
+          id: message.messageId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+          type: type,
+          title: title,
+          body: body,
+          screenRoute: screenRoute,
+          data: data,
+          isRead: false,
+          createdAt: DateTime.now(),
+        );
+        NotificationService.instance.emitInAppNotification(notif);
+
+        final currentUid = Supabase.instance.client.auth.currentUser?.id;
+        if (currentUid != null && currentUid.isNotEmpty) {
+          NotificationService.instance.loadNotifications(userId: currentUid);
+        }
       });
 
       // Background → foreground tap
@@ -272,6 +294,12 @@ class PushNotificationService {
         },
         onConflict: 'token',
       );
+    } on PostgrestException catch (error) {
+      if (error.code == '42501') {
+        debugPrint('[PushNotificationService] Guest token sync skipped (RLS)');
+      } else {
+        debugPrint('[PushNotificationService] Guest token sync error: ${error.message}');
+      }
     } catch (error) {
       if (_isApnsNotReadyError(error)) {
         return;

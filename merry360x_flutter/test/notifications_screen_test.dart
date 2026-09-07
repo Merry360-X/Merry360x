@@ -35,6 +35,7 @@ void main() {
   late _MockSessionController session;
 
   setUp(() {
+    AppColors.setBrightnessOverride(Brightness.light);
     session = _MockSessionController();
   });
 

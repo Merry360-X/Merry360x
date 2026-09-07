@@ -26,12 +26,14 @@ class AppNotification {
   factory AppNotification.fromMap(Map<String, dynamic> map) {
     return AppNotification(
       id: map['id']?.toString() ?? '',
-      type: map['type']?.toString() ?? '',
+      type: map['type']?.toString() ?? map['notification_type']?.toString() ?? '',
       title: map['title']?.toString() ?? '',
       body: map['body']?.toString() ?? '',
-      screenRoute: map['screen_route']?.toString(),
-      data: map['data'] is Map ? Map<String, dynamic>.from(map['data']) : {},
-      isRead: map['is_read'] == true,
+      screenRoute: map['screen_route']?.toString() ?? map['screenRoute']?.toString(),
+      data: map['data'] is Map
+          ? Map<String, dynamic>.from(map['data'] as Map)
+          : (map['metadata'] is Map ? Map<String, dynamic>.from(map['metadata'] as Map) : {}),
+      isRead: map['is_read'] == true || map['read'] == true,
       createdAt: DateTime.tryParse(map['created_at']?.toString() ?? '') ?? DateTime.now(),
     );
   }
@@ -53,7 +55,13 @@ class NotificationService extends ChangeNotifier {
 
   static final NotificationService instance = NotificationService._();
 
-  final SupabaseClient _sb = Supabase.instance.client;
+  SupabaseClient? get _sb {
+    try {
+      return Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
 
   List<AppNotification> _notifications = [];
   int _unreadCount = 0;
@@ -71,6 +79,19 @@ class NotificationService extends ChangeNotifier {
   int get unreadCount => _unreadCount;
   bool get loading => _loading;
 
+  void emitInAppNotification(AppNotification notif) {
+    _onNotification.add(notif);
+  }
+
+  void clear() {
+    _realtimeSub?.unsubscribe();
+    _realtimeSub = null;
+    _notifications = [];
+    _unreadCount = 0;
+    _loading = false;
+    notifyListeners();
+  }
+
   void init({required String userId}) {
     _realtimeSub?.unsubscribe();
     loadNotifications(userId: userId);
@@ -85,10 +106,12 @@ class NotificationService extends ChangeNotifier {
   }
 
   void _subscribeRealtime({required String userId}) {
-    _realtimeSub = _sb
+    final client = _sb;
+    if (client == null || userId.isEmpty) return;
+    _realtimeSub = client
         .channel('user-notifications-$userId')
         .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
+          event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'notifications',
           filter: PostgresChangeFilter(
@@ -97,10 +120,12 @@ class NotificationService extends ChangeNotifier {
             value: userId,
           ),
           callback: (payload) {
-            // Emit the new notification for in-app banner
-            final newNotif = AppNotification.fromMap(payload.newRecord);
-            _onNotification.add(newNotif);
-            // Reload full list
+            if (payload.eventType == PostgresChangeEvent.insert) {
+              // Emit the new notification for in-app banner
+              final newNotif = AppNotification.fromMap(payload.newRecord);
+              emitInAppNotification(newNotif);
+            }
+            // Reload full list & unread count in real-time
             loadNotifications(userId: userId);
           },
         )
@@ -108,12 +133,13 @@ class NotificationService extends ChangeNotifier {
   }
 
   Future<void> loadNotifications({required String userId, int limit = 50}) async {
-    if (userId.isEmpty) return;
+    final client = _sb;
+    if (client == null || userId.isEmpty) return;
     _loading = true;
     notifyListeners();
 
     try {
-      final data = await _sb
+      final data = await client
           .from('notifications')
           .select('*')
           .eq('user_id', userId)
@@ -132,9 +158,11 @@ class NotificationService extends ChangeNotifier {
   }
 
   Future<void> markAsRead({required String notificationId}) async {
+    final client = _sb;
+    if (client == null) return;
     try {
-      await _sb.rpc('mark_notifications_read', params: {
-        'p_user_id': _sb.auth.currentUser?.id ?? '',
+      await client.rpc('mark_notifications_read', params: {
+        'p_user_id': client.auth.currentUser?.id ?? '',
         'p_ids': [notificationId],
       });
       final idx = _notifications.indexWhere((n) => n.id == notificationId);
@@ -158,8 +186,10 @@ class NotificationService extends ChangeNotifier {
   }
 
   Future<void> markAllAsRead({required String userId}) async {
+    final client = _sb;
+    if (client == null) return;
     try {
-      await _sb.rpc('mark_all_notifications_read', params: {
+      await client.rpc('mark_all_notifications_read', params: {
         'p_user_id': userId,
       });
       _notifications = _notifications.map((n) => AppNotification(
@@ -175,9 +205,11 @@ class NotificationService extends ChangeNotifier {
   }
 
   Future<void> deleteNotification({required String notificationId}) async {
+    final client = _sb;
+    if (client == null) return;
     try {
-      final userId = _sb.auth.currentUser?.id ?? '';
-      await _sb.rpc('delete_notification', params: {
+      final userId = client.auth.currentUser?.id ?? '';
+      await client.rpc('delete_notification', params: {
         'p_id': notificationId,
         'p_user_id': userId,
       });
