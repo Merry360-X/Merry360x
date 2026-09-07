@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import hostingVilla from "@/assets/hosting-villa.jpg";
-import toursBackground from "@/assets/hero-resort.jpg";
+import toursBackground from "@/assets/hero-resort1.jpeg";
 import transportBackground from "@/assets/property-1.jpg";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
