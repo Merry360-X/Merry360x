@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { CloudinaryUploadDialog } from "@/components/CloudinaryUploadDialog";
+import { CKEditor5Field, getPlainTextLength } from "@/components/CKEditor5Field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AMENITIES } from "@/lib/amenities";
 import {
@@ -1763,67 +1764,67 @@ className={`p-3 rounded-lg border-2 text-left transition-all duration-200 ${
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <Label>
-                          Description * 
-                          <span className={`text-xs ml-1 ${formData.tour_package.description.length > 0 && formData.tour_package.description.length < 50 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                            ({formData.tour_package.description.length}/50 chars min)
-                          </span>
-                        </Label>
-                        <Textarea
+                      <div>
+                        <CKEditor5Field
+                          label="Description"
+                          required
                           placeholder="Provide a compelling description of your tour package..."
-                          rows={4}
                           value={formData.tour_package.description}
-                          onChange={(e) => setFormData(prev => ({
-                            ...prev,
-                            tour_package: { ...prev.tour_package, description: e.target.value }
-                          }))}
-                          className={formData.tour_package.description.length > 0 && formData.tour_package.description.length < 50 ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                          onChange={(content) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              tour_package: { ...prev.tour_package, description: content },
+                            }))
+                          }
+                          minChars={50}
+                          minHeight={150}
                         />
                       </div>
 
-                      <div className="space-y-2">
-                        <Label>
-                          Daily Itinerary * 
-                          <span className={`text-xs ml-1 ${formData.tour_package.daily_itinerary.length > 0 && formData.tour_package.daily_itinerary.length < 100 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                            ({formData.tour_package.daily_itinerary.length}/100 chars min)
-                          </span>
-                        </Label>
-                        <Textarea
+                      <div>
+                        <CKEditor5Field
+                          label="Daily Itinerary"
+                          required
                           placeholder="Day 1: Arrival and welcome...&#10;Day 2: Gorilla trekking...&#10;Day 3: Departure..."
-                          rows={6}
                           value={formData.tour_package.daily_itinerary}
-                          onChange={(e) => setFormData(prev => ({
-                            ...prev,
-                            tour_package: { ...prev.tour_package, daily_itinerary: e.target.value }
-                          }))}
-                          className={formData.tour_package.daily_itinerary.length > 0 && formData.tour_package.daily_itinerary.length < 100 ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                          onChange={(content) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              tour_package: { ...prev.tour_package, daily_itinerary: content },
+                            }))
+                          }
+                          minChars={100}
+                          minHeight={200}
                         />
                       </div>
 
                       <div className="grid md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>What's Included</Label>
-                          <Textarea
+                        <div>
+                          <CKEditor5Field
+                            label="What's Included"
                             placeholder="Transportation, meals, guide, permits..."
-                            rows={3}
                             value={formData.tour_package.included_services}
-                            onChange={(e) => setFormData(prev => ({
-                              ...prev,
-                              tour_package: { ...prev.tour_package, included_services: e.target.value }
-                            }))}
+                            onChange={(content) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                tour_package: { ...prev.tour_package, included_services: content },
+                              }))
+                            }
+                            minHeight={120}
                           />
                         </div>
-                        <div className="space-y-2">
-                          <Label>What's Not Included</Label>
-                          <Textarea
+                        <div>
+                          <CKEditor5Field
+                            label="What's Not Included"
                             placeholder="International flights, travel insurance..."
-                            rows={3}
                             value={formData.tour_package.excluded_services}
-                            onChange={(e) => setFormData(prev => ({
-                              ...prev,
-                              tour_package: { ...prev.tour_package, excluded_services: e.target.value }
-                            }))}
+                            onChange={(content) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                tour_package: { ...prev.tour_package, excluded_services: content },
+                              }))
+                            }
+                            minHeight={120}
                           />
                         </div>
                       </div>
@@ -2032,8 +2033,8 @@ className={`p-3 rounded-lg border-2 text-left transition-all duration-200 ${
                       if (formData.tour_package.categories.length === 0) missingFields.push('At least one category');
                       if (!formData.tour_package.tour_type) missingFields.push('Tour Type');
                       if (!formData.tour_package.duration) missingFields.push('Duration');
-                      if (!formData.tour_package.description || formData.tour_package.description.length < 50) missingFields.push('Description (min 50 chars)');
-                      if (!formData.tour_package.daily_itinerary || formData.tour_package.daily_itinerary.length < 100) missingFields.push('Daily Itinerary (min 100 chars)');
+                      if (!formData.tour_package.description || getPlainTextLength(formData.tour_package.description) < 50) missingFields.push('Description (min 50 chars)');
+                      if (!formData.tour_package.daily_itinerary || getPlainTextLength(formData.tour_package.daily_itinerary) < 100) missingFields.push('Daily Itinerary (min 100 chars)');
                       if (!formData.tour_package.price_per_adult) missingFields.push('Price per Adult');
                       
                       if (missingFields.length > 0) {

@@ -15,6 +15,7 @@ import { AlertCircle, Loader2, Upload, X, Save } from "lucide-react";
 import { CloudinaryUploadDialog } from "@/components/CloudinaryUploadDialog";
 import DraggableMediaGrid from "@/components/DraggableMediaGrid";
 import { uploadFile } from "@/lib/uploads";
+import { CKEditor5Field, getPlainTextLength } from "@/components/CKEditor5Field";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -629,8 +630,8 @@ Some components are non-refundable once booked, including but not limited to:
       (!selectedPolicies.includes('custom') || (customPolicyText.trim().length >= 20 || customPolicyFile !== null));
     
     return formData.title.trim() && formData.categories.length > 0 && formData.tour_types.length > 0 &&
-      formData.description.trim().length >= 50 && formData.country.trim() && formData.city.trim() &&
-      formData.duration.trim() && formData.daily_itinerary.trim().length >= 100 &&
+      getPlainTextLength(formData.description) >= 50 && formData.country.trim() && formData.city.trim() &&
+      formData.duration.trim() && getPlainTextLength(formData.daily_itinerary) >= 100 &&
       formData.meeting_point.trim() && policyValid &&
       (parseFloat(formData.price_per_adult) > 0 || hasValidTimeTier || hasValidGroupTier) &&
       (!needsTimeTier || hasValidTimeTier) &&
@@ -650,11 +651,11 @@ Some components are non-refundable once booked, including but not limited to:
     if (!formData.title.trim()) missing.push("Package title");
     if (formData.categories.length === 0) missing.push("At least one category");
     if (formData.tour_types.length === 0) missing.push("At least one tour type");
-    if (formData.description.trim().length < 50) missing.push("Description (minimum 50 characters)");
+    if (getPlainTextLength(formData.description) < 50) missing.push("Description (minimum 50 characters)");
     if (!formData.country.trim()) missing.push("Country");
     if (!formData.city.trim()) missing.push("City");
     if (!formData.duration.trim()) missing.push("Duration");
-    if (formData.daily_itinerary.trim().length < 100) missing.push("Daily itinerary (minimum 100 characters)");
+    if (getPlainTextLength(formData.daily_itinerary) < 100) missing.push("Daily itinerary (minimum 100 characters)");
     if (!formData.meeting_point.trim()) missing.push("Meeting point");
     if (!policyValid) missing.push("Custom cancellation policy text (min 20) or PDF");
     if (!(parseFloat(formData.price_per_adult) > 0 || hasValidTimeTier || hasValidGroupTier)) {
@@ -1036,18 +1037,14 @@ Some components are non-refundable once booked, including but not limited to:
             </div>
 
             <div>
-              <Label className="text-sm font-normal mb-1.5 block">
-                Description * 
-                <span className={`text-xs ml-1 ${formData.description.length > 0 && formData.description.length < 50 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                  ({formData.description.length}/50 chars min)
-                </span>
-              </Label>
-              <Textarea
+              <CKEditor5Field
+                label="Description"
+                required
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Provide a compelling description..."
-                rows={4}
-                className={formData.description.length > 0 && formData.description.length < 50 ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                onChange={(content) => setFormData((prev) => ({ ...prev, description: content }))}
+                placeholder="Provide a compelling description of your tour package..."
+                minChars={50}
+                minHeight={160}
               />
             </div>
 
@@ -1146,38 +1143,34 @@ Some components are non-refundable once booked, including but not limited to:
             <h2 className="text-base font-medium pb-2 border-b">Itinerary</h2>
 
             <div>
-              <Label className="text-sm font-normal mb-1.5 block">
-                Daily Itinerary * 
-                <span className={`text-xs ml-1 ${formData.daily_itinerary.length > 0 && formData.daily_itinerary.length < 100 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                  ({formData.daily_itinerary.length}/100 chars min)
-                </span>
-              </Label>
-              <Textarea
+              <CKEditor5Field
+                label="Daily Itinerary"
+                required
                 value={formData.daily_itinerary}
-                onChange={(e) => setFormData({ ...formData, daily_itinerary: e.target.value })}
-                placeholder="Day 1: ..., Day 2: ..."
-                rows={6}
-                className={formData.daily_itinerary.length > 0 && formData.daily_itinerary.length < 100 ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                onChange={(content) => setFormData((prev) => ({ ...prev, daily_itinerary: content }))}
+                placeholder="Day 1: Arrival & Welcome Dinner&#10;Day 2: Morning Safari Drive..."
+                minChars={100}
+                minHeight={220}
               />
             </div>
 
             <div>
-              <Label className="text-sm font-normal mb-1.5 block">Included Services</Label>
-              <Textarea
+              <CKEditor5Field
+                label="Included Services"
                 value={formData.included_services}
-                onChange={(e) => setFormData({ ...formData, included_services: e.target.value })}
-                placeholder="Accommodation, meals, guide..."
-                rows={3}
+                onChange={(content) => setFormData((prev) => ({ ...prev, included_services: content }))}
+                placeholder="Accommodation, all park fees, professional safari guide, 3 meals a day..."
+                minHeight={130}
               />
             </div>
 
             <div>
-              <Label className="text-sm font-normal mb-1.5 block">Excluded Services</Label>
-              <Textarea
+              <CKEditor5Field
+                label="Excluded Services"
                 value={formData.excluded_services}
-                onChange={(e) => setFormData({ ...formData, excluded_services: e.target.value })}
-                placeholder="Personal expenses, tips..."
-                rows={3}
+                onChange={(content) => setFormData((prev) => ({ ...prev, excluded_services: content }))}
+                placeholder="International flights, visa fees, personal travel insurance, tips..."
+                minHeight={130}
               />
             </div>
 

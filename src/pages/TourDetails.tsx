@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/popover";
 import ListingImageCarousel from "@/components/ListingImageCarousel";
 import ImageGallery from "@/components/ImageGallery";
+import RichTextRenderer from "@/components/RichTextRenderer";
 import { formatMoney } from "@/lib/money";
 import { convertAmount } from "@/lib/fx";
 import { getTourBillingQuantity, getTourPerPersonUnitPrice, getTourPriceSuffix, getTourPricingModel } from "@/lib/tour-pricing";
@@ -390,9 +391,7 @@ export default function TourDetails() {
               <h2 className="text-2xl font-bold text-foreground mb-4">{t("tourDetails.aboutTour")}</h2>
               {tour.description ? (
                 <div className="bg-card rounded-lg border p-5">
-                  <p className="text-foreground leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-base">
-                    {tour.description}
-                  </p>
+                  <RichTextRenderer content={tour.description} className="text-foreground text-base leading-relaxed" />
                 </div>
               ) : (
                 <p className="text-muted-foreground italic">{t("tourDetails.noDescription")}</p>
@@ -404,9 +403,7 @@ export default function TourDetails() {
               <div className="border-t pt-6">
                 <h2 className="text-xl font-semibold text-foreground mb-3">{t("tourDetails.dailyItinerary")}</h2>
                 <div className="bg-muted/30 rounded-lg p-5">
-                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                    {tour.daily_itinerary}
-                  </p>
+                  <RichTextRenderer content={tour.daily_itinerary} className="text-sm text-foreground leading-relaxed" />
                 </div>
               </div>
             )}
@@ -419,17 +416,13 @@ export default function TourDetails() {
                   {tour?.included_services && (
                     <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-5">
                       <h3 className="text-sm font-semibold text-foreground mb-3">{t("tourDetails.whatsIncluded")}</h3>
-                      <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                        {tour.included_services}
-                      </p>
+                      <RichTextRenderer content={tour.included_services} className="text-sm text-foreground leading-relaxed" />
                     </div>
                   )}
                   {tour?.excluded_services && (
                     <div className="bg-orange-50 dark:bg-orange-950/20 rounded-lg p-5">
                       <h3 className="text-sm font-semibold text-foreground mb-3">{t("tourDetails.whatsNotIncluded")}</h3>
-                      <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                        {tour.excluded_services}
-                      </p>
+                      <RichTextRenderer content={tour.excluded_services} className="text-sm text-foreground leading-relaxed" />
                     </div>
                   )}
                 </div>

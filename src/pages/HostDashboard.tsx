@@ -19,6 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { CloudinaryUploadDialog } from "@/components/CloudinaryUploadDialog";
 import DraggableMediaGrid from "@/components/DraggableMediaGrid";
 import AvailabilityCalendar from "@/components/AvailabilityCalendar";
+import { CKEditor5Field } from "@/components/CKEditor5Field";
 import { isVideoUrl } from "@/lib/media";
 import { logError, uiErrorMessage } from "@/lib/ui-errors";
 import { formatMoney, formatNumber } from "@/lib/money";
@@ -5118,12 +5119,12 @@ export default function HostDashboard() {
                 </div>
 
                 <div>
-                  <Label className="text-xs">Description</Label>
-                  <Textarea
+                  <CKEditor5Field
+                    label="Description"
                     value={form.description || ''}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    className="mt-1 text-sm"
-                    rows={3}
+                    onChange={(content) => setForm({ ...form, description: content })}
+                    placeholder="Provide a description..."
+                    minHeight={120}
                   />
                 </div>
               </div>
@@ -5376,32 +5377,32 @@ export default function HostDashboard() {
                   </div>
 
                   <div>
-                    <Label className="text-xs">Daily Itinerary</Label>
-                    <Textarea
+                    <CKEditor5Field
+                      label="Daily Itinerary"
                       value={form.daily_itinerary || ''}
-                      onChange={(e) => setForm({ ...form, daily_itinerary: e.target.value })}
-                      className="mt-1 text-sm"
-                      rows={3}
+                      onChange={(content) => setForm({ ...form, daily_itinerary: content })}
+                      placeholder="Day 1: ..., Day 2: ..."
+                      minHeight={150}
                     />
                   </div>
 
                   <div>
-                    <Label className="text-xs">Included Services</Label>
-                    <Textarea
+                    <CKEditor5Field
+                      label="Included Services"
                       value={form.included_services || ''}
-                      onChange={(e) => setForm({ ...form, included_services: e.target.value })}
-                      className="mt-1 text-sm"
-                      rows={2}
+                      onChange={(content) => setForm({ ...form, included_services: content })}
+                      placeholder="Accommodation, meals, guide..."
+                      minHeight={100}
                     />
                   </div>
 
                   <div>
-                    <Label className="text-xs">Excluded Services</Label>
-                    <Textarea
+                    <CKEditor5Field
+                      label="Excluded Services"
                       value={form.excluded_services || ''}
-                      onChange={(e) => setForm({ ...form, excluded_services: e.target.value })}
-                      className="mt-1 text-sm"
-                      rows={2}
+                      onChange={(content) => setForm({ ...form, excluded_services: content })}
+                      placeholder="Personal expenses, tips..."
+                      minHeight={100}
                     />
                   </div>
 
