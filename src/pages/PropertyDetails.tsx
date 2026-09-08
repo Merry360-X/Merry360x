@@ -750,6 +750,21 @@ export default function PropertyDetails() {
     [blockedDates]
   );
 
+  // Present & future unavailable dates only
+  const upcomingBlockedDates = useMemo(() => {
+    const todayStr = isoToday();
+    return (blockedDates || [])
+      .filter((blocked) => {
+        const endStr = String(blocked.end_date || "").slice(0, 10);
+        return endStr >= todayStr;
+      })
+      .sort((a, b) => {
+        const aStart = String(a.start_date || "").slice(0, 10);
+        const bStart = String(b.start_date || "").slice(0, 10);
+        return aStart.localeCompare(bStart);
+      });
+  }, [blockedDates]);
+
   const isCheckoutDateDisabled = useCallback((date: Date) => {
     if (!date) return false;
 
@@ -2490,23 +2505,25 @@ export default function PropertyDetails() {
                   </div>
                 </div>
 
-                {/* Show blocked dates if any */}
-                {blockedDates.length > 0 && (
+                {/* Show blocked dates if any (present and future only) */}
+                {upcomingBlockedDates.length > 0 && (
                   <div className="mt-3">
                     <p className="mb-2 text-sm font-medium text-muted-foreground">
                       Unavailable Dates:
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {blockedDates
+                      {upcomingBlockedDates
                         .slice(0, 5)
                         .map((blocked) => {
-                          const start = new Date(blocked.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                          const end = new Date(blocked.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                          const startDate = parseDateParamLocal(blocked.start_date) || new Date(blocked.start_date);
+                          const endDate = parseDateParamLocal(blocked.end_date) || new Date(blocked.end_date);
+                          const start = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                          const end = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                           return `${start} - ${end}`;
                         })
                         .join(', ')}
-                      {blockedDates.length > 5
-                        ? ` +${blockedDates.length - 5} more`
+                      {upcomingBlockedDates.length > 5
+                        ? ` +${upcomingBlockedDates.length - 5} more`
                         : ''}
                     </p>
                   </div>
