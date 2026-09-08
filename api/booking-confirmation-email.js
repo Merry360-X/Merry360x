@@ -889,8 +889,18 @@ export default async function handler(req, res) {
       createdAt,
       serviceName,
       propertyTitle,
+      title,
+      itemName,
       propertyImage,
+      coverImage,
+      itemImage,
+      image,
+      images,
+      address,
+      propertyAddress,
+      meetingPoint,
       location,
+      city,
       checkIn,
       checkOut,
       checkInTime,
@@ -903,6 +913,7 @@ export default async function handler(req, res) {
       currency,
       hostName,
       items,
+      reviewToken,
       // Fee breakdown fields
       basePriceAmount,
       serviceFeeAmount,
@@ -918,15 +929,133 @@ export default async function handler(req, res) {
       return json(res, 200, { ok: true, skipped: true, reason: "invalid_recipient" });
     }
 
+    let resolvedPropertyImage = propertyImage || coverImage || itemImage || image || (Array.isArray(images) ? images[0] : null);
+    let resolvedAddress = address || propertyAddress || meetingPoint || null;
+    let resolvedLocation = location || city || null;
+    let resolvedServiceName = serviceName || propertyTitle || title || itemName || null;
+    let resolvedHostName = hostName || null;
+
+    if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && bookingId) {
+      try {
+        const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        const { data: dbBooking } = await supabase
+          .from("bookings")
+          .select("*")
+          .eq("id", bookingId)
+          .maybeSingle();
+
+        if (dbBooking) {
+          if (dbBooking.property_id) {
+            const { data: prop } = await supabase
+              .from("properties")
+              .select("title, images, cover_image, address, location, city, host_id")
+              .eq("id", dbBooking.property_id)
+              .maybeSingle();
+            if (prop) {
+              if (!resolvedServiceName) resolvedServiceName = prop.title;
+              if (!resolvedPropertyImage) {
+                resolvedPropertyImage = prop.cover_image || (Array.isArray(prop.images) && prop.images[0]) || null;
+              }
+              if (!resolvedAddress) resolvedAddress = prop.address || prop.location || prop.city;
+              if (!resolvedLocation) resolvedLocation = prop.location || prop.city;
+              if (!resolvedHostName && prop.host_id) {
+                const { data: hostProfile } = await supabase
+                  .from("profiles")
+                  .select("full_name")
+                  .or(`id.eq.${prop.host_id},user_id.eq.${prop.host_id}`)
+                  .limit(1)
+                  .maybeSingle();
+                if (hostProfile?.full_name) resolvedHostName = hostProfile.full_name;
+              }
+            }
+          } else if (dbBooking.tour_id) {
+            const { data: tourPkg } = await supabase
+              .from("tour_packages")
+              .select("title, cover_image, gallery_images, meeting_point, location, city, host_id")
+              .eq("id", dbBooking.tour_id)
+              .maybeSingle();
+            if (tourPkg) {
+              if (!resolvedServiceName) resolvedServiceName = tourPkg.title;
+              if (!resolvedPropertyImage) {
+                resolvedPropertyImage = tourPkg.cover_image || (Array.isArray(tourPkg.gallery_images) && tourPkg.gallery_images[0]) || null;
+              }
+              if (!resolvedAddress) resolvedAddress = tourPkg.meeting_point || tourPkg.location || tourPkg.city;
+              if (!resolvedLocation) resolvedLocation = tourPkg.location || tourPkg.city;
+              if (!resolvedHostName && tourPkg.host_id) {
+                const { data: hostProfile } = await supabase
+                  .from("profiles")
+                  .select("full_name")
+                  .or(`id.eq.${tourPkg.host_id},user_id.eq.${tourPkg.host_id}`)
+                  .limit(1)
+                  .maybeSingle();
+                if (hostProfile?.full_name) resolvedHostName = hostProfile.full_name;
+              }
+            } else {
+              const { data: tour } = await supabase
+                .from("tours")
+                .select("title, images, meeting_point, location, city, created_by")
+                .eq("id", dbBooking.tour_id)
+                .maybeSingle();
+              if (tour) {
+                if (!resolvedServiceName) resolvedServiceName = tour.title;
+                if (!resolvedPropertyImage) {
+                  resolvedPropertyImage = Array.isArray(tour.images) ? tour.images[0] : null;
+                }
+                if (!resolvedAddress) resolvedAddress = tour.meeting_point || tour.location || tour.city;
+                if (!resolvedLocation) resolvedLocation = tour.location || tour.city;
+                if (!resolvedHostName && tour.created_by) {
+                  const { data: hostProfile } = await supabase
+                    .from("profiles")
+                    .select("full_name")
+                    .or(`id.eq.${tour.created_by},user_id.eq.${tour.created_by}`)
+                    .limit(1)
+                    .maybeSingle();
+                  if (hostProfile?.full_name) resolvedHostName = hostProfile.full_name;
+                }
+              }
+            }
+          } else if (dbBooking.transport_id) {
+            const { data: veh } = await supabase
+              .from("transport_vehicles")
+              .select("title, image_url, media, location, pickup_location, owner_id")
+              .eq("id", dbBooking.transport_id)
+              .maybeSingle();
+            if (veh) {
+              if (!resolvedServiceName) resolvedServiceName = veh.title;
+              if (!resolvedPropertyImage) {
+                resolvedPropertyImage = veh.image_url || (Array.isArray(veh.media) && veh.media[0]) || null;
+              }
+              if (!resolvedAddress) resolvedAddress = veh.pickup_location || veh.location;
+              if (!resolvedLocation) resolvedLocation = veh.location;
+              if (!resolvedHostName && veh.owner_id) {
+                const { data: hostProfile } = await supabase
+                  .from("profiles")
+                  .select("full_name")
+                  .or(`id.eq.${veh.owner_id},user_id.eq.${veh.owner_id}`)
+                  .limit(1)
+                  .maybeSingle();
+                if (hostProfile?.full_name) resolvedHostName = hostProfile.full_name;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Could not enrich booking confirmation data from Supabase:", err?.message || err);
+      }
+    }
+
     const booking = {
       bookingId,
       guestName,
       firstName: firstName || (guestName ? String(guestName).trim().split(" ")[0] : ""),
       bookingDate: bookingDate || createdAt || new Date().toISOString(),
-      serviceName: serviceName || propertyTitle || "Booking",
-      propertyTitle: propertyTitle || serviceName || "Booking",
-      propertyImage,
-      location,
+      serviceName: resolvedServiceName || "Booking",
+      propertyTitle: resolvedServiceName || "Booking",
+      propertyImage: resolvedPropertyImage,
+      coverImage: resolvedPropertyImage,
+      itemImage: resolvedPropertyImage,
+      address: resolvedAddress,
+      location: resolvedLocation,
       checkIn,
       checkOut,
       checkInTime,
@@ -936,8 +1065,9 @@ export default async function handler(req, res) {
       nights,
       totalPrice: totalPrice || totalAmount,
       currency,
-      hostName,
+      hostName: resolvedHostName,
       items,
+      reviewToken,
       basePriceAmount,
       serviceFeeAmount,
       hostEarningsAmount,
@@ -962,7 +1092,7 @@ export default async function handler(req, res) {
               name: confirmationRecipient.source === "preview" ? "Template Preview" : (guestName || "Guest"),
             },
           ],
-          subject: `${previewTo ? "[Preview] " : ""}Booking Confirmed – ${propertyTitle || "Your Stay"}`,
+          subject: `${previewTo ? "[Preview] " : ""}Booking Confirmed – ${resolvedServiceName || "Your Stay"}`,
           htmlContent: html,
           tags: ["booking", "confirmation"],
         })

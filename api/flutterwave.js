@@ -4,6 +4,7 @@ import {
   escapeHtml,
   keyValueRows,
   renderMinimalEmail,
+  generateEnhancedBookingConfirmationHtml,
   validateRecipientEmail,
 } from "../lib/email-template-kit.js";
 import { upsertSavedCardMethod } from "../lib/payment-method-storage.js";
@@ -102,44 +103,30 @@ async function sendFlwGuestEmail(checkout, items, bookingIds, reviewTokens) {
   const checkOutFormatted = formatDateTime(checkOutDate, checkOutTime);
 
   const singleToken = Array.isArray(reviewTokens) && reviewTokens.length === 1 ? reviewTokens[0]?.review_token : null;
-  const reviewUrl = singleToken ? `https://merry360x.com/review/${singleToken}` : `https://merry360x.com/my-bookings`;
-  const stars = [1, 2, 3, 4, 5]
-    .map((s) => `<a href="${reviewUrl}${reviewUrl.includes("?") ? "&" : "?"}rating=${s}" style="display:inline-block;text-decoration:none;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;margin-right:6px;color:#111827;font-size:13px;">${"★".repeat(s)}</a>`)
-    .join("");
-  const itemsHtml = isMultiItem
-    ? `<div style="margin-bottom:12px;">${items.map((it) => `<p style="margin:0 0 6px;color:#374151;font-size:14px;">• ${escapeHtml(it.title || it.name || "Item")} — ${escapeHtml(formatMoney(it.calculated_price || it.price, it.calculated_price_currency || it.currency || "USD"))}</p>`).join("")}</div>`
-    : "";
 
-  const detailsRows = [
-    { label: "Confirmation Code", value: `<span style="font-family:monospace;font-weight:700;">${escapeHtml(receiptNumber)}</span>` },
-    { label: "Guest", value: escapeHtml(guestName) },
-    { label: "Listing Name", value: `<strong>${escapeHtml(listingName)}</strong>` },
-    { label: "Booking Date", value: escapeHtml(bookingDateFormatted) },
-  ];
+  const itemImage = firstItem?.image || (Array.isArray(firstItem?.images) && firstItem.images[0]) || firstItem?.cover_image || checkout.metadata?.item_image || checkout.metadata?.cover_image || checkout.image;
+  const address = firstItem?.address || checkout.metadata?.booking_details?.address || checkout.metadata?.address || firstItem?.meeting_point || checkout.metadata?.booking_details?.meeting_point || firstItem?.location || checkout.metadata?.booking_details?.location || "";
+  const location = firstItem?.location || checkout.metadata?.booking_details?.location || firstItem?.city || "Rwanda";
 
-  if (checkInFormatted) {
-    detailsRows.push({ label: "Check-in / Start", value: escapeHtml(checkInFormatted) });
-  }
-
-  if (checkOutFormatted) {
-    detailsRows.push({ label: "Check-out / End", value: escapeHtml(checkOutFormatted) });
-  }
-
-  detailsRows.push({ label: "Amount Paid", value: `<strong>${escapeHtml(totalAmount)}</strong>` });
-  detailsRows.push({ label: "Payment", value: "Card (Flutterwave)" });
-  detailsRows.push({ label: "Status", value: `<span style="display:inline-block;background:#dcfce7;color:#166534;padding:2px 8px;border-radius:999px;font-weight:600;font-size:12px;">Confirmed</span>` });
-
-  if (isMultiItem) {
-    detailsRows.push({ label: "Bookings", value: escapeHtml(String(bookingIds.length)) });
-  }
-
-  const html = renderMinimalEmail({
-    eyebrow: "Booking Confirmation",
-    title: "Booking confirmed",
-    subtitle: "Your card payment was successful and your booking is complete.",
-    bodyHtml: `${itemsHtml}${keyValueRows(detailsRows)}<div style="margin-top:14px;"><p style="margin:0 0 8px;color:#6b7280;font-size:12px;">Rate your experience:</p>${stars}</div>`,
-    ctaText: "View My Bookings",
-    ctaUrl: "https://merry360x.com/my-bookings",
+  const html = generateEnhancedBookingConfirmationHtml({
+    bookingId: Array.isArray(bookingIds) && bookingIds.length ? bookingIds[0] : receiptNumber,
+    guestName,
+    serviceName: listingName,
+    propertyTitle: listingName,
+    coverImage: itemImage,
+    propertyImage: itemImage,
+    itemImage,
+    address,
+    location,
+    checkIn: checkInDate,
+    checkOut: checkOutDate,
+    checkInTime,
+    checkOutTime,
+    totalPrice: checkout.total_amount,
+    currency: checkout.currency || "USD",
+    items,
+    reviewToken: singleToken,
+    bookingDate: checkout.created_at || new Date().toISOString(),
   });
 
   try {
