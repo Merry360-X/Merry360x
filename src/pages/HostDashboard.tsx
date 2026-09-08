@@ -2205,12 +2205,47 @@ export default function HostDashboard() {
         }
       }
 
-      if (lastError) throw lastError;
+      if (!updatedRow?.id) {
+        const { data, error } = await (supabase as any)
+          .from(tableName)
+          .update(updates)
+          .eq("id", id)
+          .select("id")
+          .maybeSingle();
+
+        if (!error && data?.id) {
+          updatedRow = data;
+        } else if (error) {
+          lastError = error;
+        }
+      }
+
+      if (lastError && !updatedRow?.id) throw lastError;
       if (!updatedRow?.id) {
         throw new Error("Tour update failed: listing not found or you don't have permission to edit it.");
       }
+
+      // Optimistically update local tours state
+      setTours((prev) =>
+        prev.map((t) => {
+          if (t.id === id) {
+            const nextStatus = updates.status !== undefined ? updates.status : t.status;
+            const nextIsPublished =
+              updates.is_published !== undefined
+                ? updates.is_published
+                : updates.status === "approved"
+                ? true
+                : updates.status === "draft"
+                ? false
+                : t.is_published;
+            return { ...t, ...updates, status: nextStatus, is_published: nextIsPublished };
+          }
+          return t;
+        })
+      );
+
       toast({ title: "Success", description: "Tour updated successfully" });
-      fetchData();
+      await fetchData();
       return true;
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to update tour", variant: "destructive" });
@@ -4965,6 +5000,13 @@ export default function HostDashboard() {
         setUploading(false);
       }
 
+      if (tour.source === "tour_packages") {
+        const nextStatus = (form as any).status ?? (form.is_published ? "approved" : "draft");
+        updates.status = nextStatus;
+      } else {
+        updates.is_published = form.is_published ?? true;
+      }
+
       const success = await updateTour(tour.id, updates, form.source);
       if (success) {
         setEditingTourId(null);
@@ -4976,13 +5018,20 @@ export default function HostDashboard() {
 
     const isTourPackage = tour.source === "tour_packages";
     const displayImages = isEditing ? getCurrentImages() : (form.images || []);
-    const isPublished = Boolean(form.is_published ?? tour.is_published);
+    const isPublished = isTourPackage
+      ? ((form.status ?? tour.status) === "approved")
+      : Boolean(form.is_published ?? tour.is_published);
 
     const handleTogglePublished = async () => {
-      const updates = isTourPackage
-        ? { status: isPublished ? "draft" : "approved" }
-        : { is_published: !isPublished };
-      await updateTour(tour.id, updates, tour.source);
+      const nextPublished = !isPublished;
+      if (isTourPackage) {
+        const nextStatus = nextPublished ? "approved" : "draft";
+        setForm((f) => ({ ...f, status: nextStatus, is_published: nextPublished }));
+        await updateTour(tour.id, { status: nextStatus }, "tour_packages");
+      } else {
+        setForm((f) => ({ ...f, is_published: nextPublished }));
+        await updateTour(tour.id, { is_published: nextPublished }, "tours");
+      }
     };
 
     return (
@@ -4994,6 +5043,14 @@ export default function HostDashboard() {
             ) : (
               <MapPin className="w-8 h-8 text-muted-foreground" />
             )}
+            <div className="absolute top-2 left-2">
+              <Badge
+                variant={isPublished ? "default" : "secondary"}
+                className={isPublished ? "bg-emerald-600 text-white hover:bg-emerald-600" : "bg-amber-100 text-amber-800 hover:bg-amber-100"}
+              >
+                {isPublished ? "Live" : "Draft"}
+              </Badge>
+            </div>
             <div className="absolute top-2 right-2">
               {isTourPackage ? (
                 <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">Package</Badge>
@@ -5009,9 +5066,17 @@ export default function HostDashboard() {
             <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
               {/* Header */}
               <div className="flex items-center justify-between pb-2 border-b">
-                <Badge variant="outline" className="text-xs">
-                  {isTourPackage ? "Tour Package" : "Tour"}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">
+                    {isTourPackage ? "Tour Package" : "Tour"}
+                  </Badge>
+                  <Badge
+                    variant={isPublished ? "default" : "secondary"}
+                    className={isPublished ? "bg-emerald-600 text-white hover:bg-emerald-600" : "bg-amber-100 text-amber-800 hover:bg-amber-100"}
+                  >
+                    {isPublished ? "Live" : "Draft"}
+                  </Badge>
+                </div>
                 <span className="text-xs text-muted-foreground">Editing</span>
               </div>
 
@@ -5802,14 +5867,29 @@ export default function HostDashboard() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t sticky bottom-0 bg-card">
-                <Button size="sm" variant="outline" onClick={() => { setEditingTourId(null); setPdfFile(null); setNewImages([]); setRemovedImages([]); }}>
-                  <X className="w-3 h-3 mr-1" /> Cancel
-                </Button>
-                <Button size="sm" onClick={handleSave} disabled={uploading}>
-                  {uploading ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Save className="w-3 h-3 mr-1" />}
-                  Save
-                </Button>
+              <div className="flex items-center justify-between pt-2 border-t sticky bottom-0 bg-card">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={isPublished}
+                    onCheckedChange={(v) => {
+                      if (isTourPackage) {
+                        setForm((f) => ({ ...f, status: v ? "approved" : "draft", is_published: v }));
+                      } else {
+                        setForm((f) => ({ ...f, is_published: v }));
+                      }
+                    }}
+                  />
+                  <span className="text-sm font-medium">{isPublished ? "Live" : "Draft"}</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => { setEditingTourId(null); setPdfFile(null); setNewImages([]); setRemovedImages([]); }}>
+                    <X className="w-3 h-3 mr-1" /> Cancel
+                  </Button>
+                  <Button size="sm" onClick={handleSave} disabled={uploading}>
+                    {uploading ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Save className="w-3 h-3 mr-1" />}
+                    Save
+                  </Button>
+                </div>
               </div>
             </div>
           ) : (

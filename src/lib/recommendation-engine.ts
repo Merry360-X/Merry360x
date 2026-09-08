@@ -238,6 +238,12 @@ export class RecommendationEngine {
       const table = itemType === 'tour_package' ? 'tour_packages' : itemType === 'tour' ? 'tours' : 'properties';
       let query = supabase.from(table).select('*');
 
+      if (table === 'tour_packages') {
+        query = query.eq('status', 'approved');
+      } else {
+        query = query.eq('is_published', true);
+      }
+
       // Category match
       if (refItem.category) {
         query = query.eq('category', refItem.category);

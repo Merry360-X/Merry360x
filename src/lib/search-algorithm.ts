@@ -245,7 +245,7 @@ export class SearchAlgorithm {
       let query = supabase
         .from('tours')
         .select('*')
-        .eq('status', 'approved');
+        .eq('is_published', true);
 
       if (filters?.priceMin) query = query.gte('price_per_adult', filters.priceMin);
       if (filters?.priceMax) query = query.lte('price_per_adult', filters.priceMax);
@@ -301,7 +301,7 @@ export class SearchAlgorithm {
       let query = supabase
         .from('tour_packages')
         .select('*')
-        .eq('is_published', true);
+        .eq('status', 'approved');
 
       if (filters?.priceMin) query = query.gte('price_per_person', filters.priceMin);
       if (filters?.priceMax) query = query.lte('price_per_person', filters.priceMax);
@@ -489,7 +489,7 @@ export class SearchAlgorithm {
       const { data: tours } = await supabase
         .from('tours')
         .select('title, location')
-        .eq('status', 'approved')
+        .eq('is_published', true)
         .or(`title.ilike.%${query}%,location.ilike.%${query}%`)
         .limit(limit);
 

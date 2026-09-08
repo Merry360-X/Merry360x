@@ -84,13 +84,13 @@ const fetchTours = async ({
     .select(
       "id, title, description, category, difficulty, duration_days, price_per_person, currency, images, rating, review_count, location, created_by, pricing_tiers"
     )
-    .or("is_published.eq.true,is_published.is.null")
+    .eq("is_published", true)
     .order("created_at", { ascending: false });
 
   // Fetch from tour_packages table
   const packagesQuery = (supabase.from("tour_packages") as any)
     .select("*")
-    .or("status.eq.approved,status.eq.published,is_approved.eq.true,status.is.null")
+    .eq("status", "approved")
     .order("created_at", { ascending: false });
 
   const [toursRes, packagesRes] = await Promise.all([
@@ -349,10 +349,10 @@ const Tours = () => {
       const [toursRes, packagesRes] = await Promise.all([
         (supabase.from("tours") as any)
           .select("location")
-          .or("is_published.eq.true,is_published.is.null"),
+          .eq("is_published", true),
         (supabase.from("tour_packages") as any)
           .select("country, city")
-          .or("status.eq.approved,status.eq.published,is_approved.eq.true,status.is.null"),
+          .eq("status", "approved"),
       ]);
 
       const countrySet = new Set<string>();
