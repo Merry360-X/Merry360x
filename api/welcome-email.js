@@ -132,7 +132,7 @@ function loadWelcomeEmailHtml({ firstName, fullName }) {
                     
                     <!-- Top Logo Icon -->
                     <div style="margin-bottom: 12px;">
-                      <img src="https://merry360x.com/brand/logo.png" alt="Merry360X" width="50" height="50" style="display: inline-block; width: 50px; height: 50px; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />
+                      <img src="https://merry360x.com/brand/white_mode.png" alt="Merry360X" width="50" height="50" style="display: inline-block; width: 50px; height: 50px; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />
                     </div>
 
                     <h2 style="margin: 0 0 6px; font-family: 'Playfair Display', Georgia, serif; font-size: 22px; font-weight: 700; color: #111827;">
