@@ -952,11 +952,13 @@ export default async function handler(req, res) {
               .eq("id", dbBooking.property_id)
               .maybeSingle();
             if (prop) {
-              if (!resolvedServiceName) resolvedServiceName = prop.title;
+              if (!resolvedServiceName || resolvedServiceName === "Booking") resolvedServiceName = prop.title;
               if (!resolvedPropertyImage) {
                 resolvedPropertyImage = prop.cover_image || (Array.isArray(prop.images) && prop.images[0]) || null;
               }
-              if (!resolvedAddress) resolvedAddress = prop.address || prop.location || prop.city;
+              if (prop.address) resolvedAddress = prop.address;
+              if (prop.location) resolvedLocation = prop.location;
+              if (!resolvedAddress) resolvedAddress = prop.location || prop.city;
               if (!resolvedLocation) resolvedLocation = prop.location || prop.city;
               if (!resolvedHostName && prop.host_id) {
                 const { data: hostProfile } = await supabase
