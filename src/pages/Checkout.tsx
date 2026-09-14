@@ -2218,6 +2218,7 @@ export default function CheckoutNew() {
         host_earnings_amount: hostEarningsAmountRwf,
         payment_status: 'pending',
         payment_method: paymentMethod === 'card' ? 'card' : paymentMethod === 'bank' ? 'bank_transfer' : 'mobile_money',
+        referral_code: appliedReferral?.referral_code || (referralCodeInput.trim() ? referralCodeInput.trim().toUpperCase() : null),
         metadata: {
           items: cartItemsWithPrices,
           booking_details: bookingDetails,

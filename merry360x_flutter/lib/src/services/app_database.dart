@@ -1794,17 +1794,24 @@ class AppDatabase {
 
   Future<Map<String, dynamic>> fetchAffiliateData({required String userId}) async {
     try {
+      final profile = await _sb.from('affiliates').select('*').eq('user_id', userId).maybeSingle();
+      if (profile == null) {
+        return {'profile': null, 'referrals': [], 'commissions': []};
+      }
+      final affId = profile['id']?.toString() ?? '';
+
       final results = await Future.wait([
-        _sb.from('affiliates').select('*').eq('user_id', userId).maybeSingle(),
-        _sb.from('affiliate_referrals').select('id, created_at').eq('affiliate_id', userId).limit(100),
-        _sb.from('affiliate_commissions').select('id, amount, currency, created_at, status').eq('affiliate_id', userId).limit(100),
+        _sb.from('affiliate_referrals').select('id, created_at, converted, referral_code').eq('affiliate_id', affId).limit(100),
+        _sb.from('affiliate_commissions').select('id, amount, status, created_at, booking_value, commission_rate, booking_id').eq('affiliate_id', affId).limit(100),
       ]);
+
       return {
-        'profile': results[0],
-        'referrals': (results[1] as List).cast<Map<String, dynamic>>(),
-        'commissions': (results[2] as List).cast<Map<String, dynamic>>(),
+        'profile': profile,
+        'referrals': (results[0] as List).cast<Map<String, dynamic>>(),
+        'commissions': (results[1] as List).cast<Map<String, dynamic>>(),
       };
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[fetchAffiliateData error] $e');
       return {'profile': null, 'referrals': [], 'commissions': []};
     }
   }

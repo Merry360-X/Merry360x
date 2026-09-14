@@ -103,6 +103,88 @@ async function sendPostBookingGuestPaidEmail(supabase, charge, checkout) {
   }).catch(() => null);
 }
 
+async function ensureAffiliateCommission(supabase, booking, referralCode) {
+  if (!referralCode || !booking || !booking.id) return null;
+  const cleanCode = String(referralCode).trim().toUpperCase();
+  if (!cleanCode) return null;
+
+  try {
+    const { data: affiliate } = await supabase
+      .from("affiliates")
+      .select("id, user_id, commission_rate, status")
+      .ilike("referral_code", cleanCode)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (!affiliate || !affiliate.id) return null;
+    if (affiliate.user_id && affiliate.user_id === booking.guest_id) return null;
+
+    const commissionRate = affiliate.commission_rate || 10;
+    const bookingPrice = Number(booking.total_price) || 0;
+    const commissionAmount = Number(((bookingPrice * commissionRate) / 100).toFixed(2));
+
+    if (commissionAmount <= 0) return null;
+
+    // Check existing commission
+    const { data: existingComm } = await supabase
+      .from("affiliate_commissions")
+      .select("id")
+      .eq("booking_id", booking.id)
+      .eq("affiliate_id", affiliate.id)
+      .maybeSingle();
+
+    if (existingComm) return existingComm;
+
+    const commPayload = {
+      affiliate_id: affiliate.id,
+      booking_id: booking.id,
+      amount: commissionAmount,
+      booking_value: bookingPrice,
+      affiliate_commission: commissionAmount,
+      commission_rate: commissionRate,
+      status: "pending",
+    };
+
+    const { data: newComm, error: commErr } = await supabase
+      .from("affiliate_commissions")
+      .insert(commPayload)
+      .select()
+      .single();
+
+    if (commErr) {
+      console.warn("Could not insert affiliate commission:", commErr.message);
+      return null;
+    }
+
+    const { data: allComms } = await supabase
+      .from("affiliate_commissions")
+      .select("amount, status")
+      .eq("affiliate_id", affiliate.id);
+
+    if (allComms) {
+      const totalReferrals = allComms.length;
+      const pendingEarnings = allComms.filter((c) => c.status === "pending").reduce((s, c) => s + Number(c.amount || 0), 0);
+      const totalEarnings = allComms.reduce((s, c) => s + Number(c.amount || 0), 0);
+
+      await supabase
+        .from("affiliates")
+        .update({
+          total_referrals: totalReferrals,
+          pending_earnings: Number(pendingEarnings.toFixed(2)),
+          total_earnings: Number(totalEarnings.toFixed(2)),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", affiliate.id);
+    }
+
+    await supabase.from("bookings").update({ affiliate_id: affiliate.id }).eq("id", booking.id);
+    return newComm;
+  } catch (err) {
+    console.error("Error in ensureAffiliateCommission:", err);
+    return null;
+  }
+}
+
 async function sendPostBookingHostPaidEmail(supabase, charge, checkout) {
   if (!BREVO_API_KEY || !charge?.booking_id) return;
 
@@ -1083,17 +1165,41 @@ export default async function handler(req, res) {
 
           console.log("📝 Creating booking:", bookingData);
 
-          const { data: booking, error: bookingError } = await supabase
+          let booking = null;
+          const { data: bData, error: bookingError } = await supabase
             .from("bookings")
             .insert(bookingData)
-            .select("id")
+            .select("id, total_price, currency, guest_id")
             .single();
 
           if (bookingError) {
-            console.error("❌ Failed to create booking:", bookingError);
+            console.error("❌ Failed to create booking with full payload:", bookingError.message);
+            // Fallback retry without referral_code on the booking record in case of trigger failure
+            const fallbackData = { ...bookingData };
+            delete fallbackData.referral_code;
+            const { data: fbData, error: fbError } = await supabase
+              .from("bookings")
+              .insert(fallbackData)
+              .select("id, total_price, currency, guest_id")
+              .single();
+            if (fbError) {
+              console.error("❌ Fallback booking creation also failed:", fbError.message);
+            } else {
+              booking = fbData;
+            }
           } else {
+            booking = bData;
+          }
+
+          if (booking) {
             console.log(`✅ Booking created: ${booking.id}`);
             createdBookingIds.push(booking.id);
+
+            // Ensure referral partner commission is credited accurately
+            const refCode = checkout.referral_code || checkout.metadata?.referral_code;
+            if (refCode) {
+              await ensureAffiliateCommission(supabase, booking, refCode);
+            }
           }
         } catch (bookingErr) {
           console.error("❌ Booking creation error:", bookingErr);

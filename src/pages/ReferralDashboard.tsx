@@ -50,7 +50,7 @@ import {
   Building2,
   Calendar
 } from "lucide-react";
-import { formatNumber } from "@/lib/money";
+import { formatNumber, formatMoney } from "@/lib/money";
 
 export default function ReferralDashboard() {
   const { user, refreshRoles, isLoading: authLoading } = useAuth();
@@ -583,10 +583,10 @@ export default function ReferralDashboard() {
                               {c.bookings?.booking_type || "Booking"}
                             </TableCell>
                             <TableCell className="text-xs font-mono text-slate-700">
-                              {formatNumber(c.booking_value || c.bookings?.total_price || 0)} {c.currency || "RWF"}
+                              {formatMoney(c.booking_value || c.bookings?.total_price || 0, c.currency || c.bookings?.currency || "RWF")}
                             </TableCell>
                             <TableCell className="text-xs font-mono font-semibold text-emerald-600">
-                              +{formatNumber(c.amount || c.affiliate_commission || 0)} {c.currency || "RWF"}
+                              +{formatMoney(c.amount || c.affiliate_commission || 0, c.currency || "RWF")}
                             </TableCell>
                             <TableCell>
                               <Badge

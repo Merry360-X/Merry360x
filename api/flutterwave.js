@@ -76,6 +76,87 @@ function formatDateTime(dateStr, timeStr) {
   }
 }
 
+async function ensureAffiliateCommission(supabase, booking, referralCode) {
+  if (!referralCode || !booking || !booking.id) return null;
+  const cleanCode = String(referralCode).trim().toUpperCase();
+  if (!cleanCode) return null;
+
+  try {
+    const { data: affiliate } = await supabase
+      .from("affiliates")
+      .select("id, user_id, commission_rate, status")
+      .ilike("referral_code", cleanCode)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (!affiliate || !affiliate.id) return null;
+    if (affiliate.user_id && affiliate.user_id === booking.guest_id) return null;
+
+    const commissionRate = affiliate.commission_rate || 10;
+    const bookingPrice = Number(booking.total_price) || 0;
+    const commissionAmount = Number(((bookingPrice * commissionRate) / 100).toFixed(2));
+
+    if (commissionAmount <= 0) return null;
+
+    const { data: existingComm } = await supabase
+      .from("affiliate_commissions")
+      .select("id")
+      .eq("booking_id", booking.id)
+      .eq("affiliate_id", affiliate.id)
+      .maybeSingle();
+
+    if (existingComm) return existingComm;
+
+    const commPayload = {
+      affiliate_id: affiliate.id,
+      booking_id: booking.id,
+      amount: commissionAmount,
+      booking_value: bookingPrice,
+      affiliate_commission: commissionAmount,
+      commission_rate: commissionRate,
+      status: "pending",
+    };
+
+    const { data: newComm, error: commErr } = await supabase
+      .from("affiliate_commissions")
+      .insert(commPayload)
+      .select()
+      .single();
+
+    if (commErr) {
+      console.warn("Could not insert affiliate commission:", commErr.message);
+      return null;
+    }
+
+    const { data: allComms } = await supabase
+      .from("affiliate_commissions")
+      .select("amount, status")
+      .eq("affiliate_id", affiliate.id);
+
+    if (allComms) {
+      const totalReferrals = allComms.length;
+      const pendingEarnings = allComms.filter((c) => c.status === "pending").reduce((s, c) => s + Number(c.amount || 0), 0);
+      const totalEarnings = allComms.reduce((s, c) => s + Number(c.amount || 0), 0);
+
+      await supabase
+        .from("affiliates")
+        .update({
+          total_referrals: totalReferrals,
+          pending_earnings: Number(pendingEarnings.toFixed(2)),
+          total_earnings: Number(totalEarnings.toFixed(2)),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", affiliate.id);
+    }
+
+    await supabase.from("bookings").update({ affiliate_id: affiliate.id }).eq("id", booking.id);
+    return newComm;
+  } catch (err) {
+    console.error("Error in ensureAffiliateCommission:", err);
+    return null;
+  }
+}
+
 async function sendFlwGuestEmail(checkout, items, bookingIds, reviewTokens) {
   if (!BREVO_API_KEY) return;
   const recipientCheck = validateRecipientEmail(checkout.email);
@@ -421,8 +502,38 @@ async function createBookingsForPaidCheckout(supabase, checkoutData) {
         continue;
       }
 
-      const { data: inserted } = await supabase.from("bookings").insert(bookingData).select("id").single();
-      if (inserted?.id) createdIds.push(inserted.id);
+      let inserted = null;
+      const { data: insData, error: insErr } = await supabase
+        .from("bookings")
+        .insert(bookingData)
+        .select("id, total_price, currency, guest_id")
+        .single();
+
+      if (insErr) {
+        console.error("Flutterwave booking create error with full payload:", insErr.message);
+        const fallbackData = { ...bookingData };
+        delete fallbackData.referral_code;
+        const { data: fbData, error: fbErr } = await supabase
+          .from("bookings")
+          .insert(fallbackData)
+          .select("id, total_price, currency, guest_id")
+          .single();
+        if (fbErr) {
+          console.error("Flutterwave fallback booking create also failed:", fbErr.message);
+        } else {
+          inserted = fbData;
+        }
+      } else {
+        inserted = insData;
+      }
+
+      if (inserted?.id) {
+        createdIds.push(inserted.id);
+        const refCode = checkoutData.referral_code || checkoutData.metadata?.referral_code;
+        if (refCode) {
+          await ensureAffiliateCommission(supabase, inserted, refCode);
+        }
+      }
     } catch (error) {
       console.error("Flutterwave booking create error", error);
     }

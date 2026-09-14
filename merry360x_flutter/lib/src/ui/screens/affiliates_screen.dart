@@ -57,10 +57,11 @@ class _AffiliatesScreenState extends State<AffiliatesScreen> {
     final data = _data ?? {};
     final profile = (data['profile'] as Map?) ?? {};
     final referrals = (data['referrals'] as List?) ?? [];
-    final commissions = (data['commissions'] as List?) ?? [];
     final referralCode = (profile['referral_code'] ?? widget.session.userId ?? '').toString();
-    final referralLink = 'https://merrymom.app/ref/$referralCode';
-    final totalEarnings = commissions.fold<double>(0, (sum, c) => sum + ((c['amount'] ?? 0) as num).toDouble());
+    final referralLink = 'https://merry360x.com/?ref=$referralCode';
+    final totalEarnings = ((profile['total_earnings'] ?? 0) as num).toDouble() > 0 
+        ? ((profile['total_earnings'] ?? 0) as num).toDouble()
+        : commissions.fold<double>(0, (sum, c) => sum + ((c['amount'] ?? 0) as num).toDouble());
 
     return RefreshIndicator(
       color: AppColors.rausch,
