@@ -24,15 +24,22 @@ class AppNotification {
   });
 
   factory AppNotification.fromMap(Map<String, dynamic> map) {
+    final dataMap = map['data'] is Map
+        ? Map<String, dynamic>.from(map['data'] as Map)
+        : (map['metadata'] is Map ? Map<String, dynamic>.from(map['metadata'] as Map) : <String, dynamic>{});
+
+    final screenRoute = map['screen_route']?.toString() ??
+        map['screenRoute']?.toString() ??
+        dataMap['screen_route']?.toString() ??
+        dataMap['deep_link']?.toString();
+
     return AppNotification(
       id: map['id']?.toString() ?? '',
-      type: map['type']?.toString() ?? map['notification_type']?.toString() ?? '',
+      type: map['notification_type']?.toString() ?? map['type']?.toString() ?? '',
       title: map['title']?.toString() ?? '',
       body: map['body']?.toString() ?? '',
-      screenRoute: map['screen_route']?.toString() ?? map['screenRoute']?.toString(),
-      data: map['data'] is Map
-          ? Map<String, dynamic>.from(map['data'] as Map)
-          : (map['metadata'] is Map ? Map<String, dynamic>.from(map['metadata'] as Map) : {}),
+      screenRoute: screenRoute,
+      data: dataMap,
       isRead: map['is_read'] == true || map['read'] == true,
       createdAt: DateTime.tryParse(map['created_at']?.toString() ?? '') ?? DateTime.now(),
     );
