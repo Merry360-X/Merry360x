@@ -78,6 +78,10 @@
     {
       "path": "/api/pawapay-check-status?action=sync-payouts&syncAll=1&limit=100",
       "schedule": "15 4 * * *"
+    },
+    {
+      "path": "/api/welcome-email?action=cron-founder-24h",
+      "schedule": "0 */4 * * *"
     }
   ]
 }

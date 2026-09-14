@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { createClient } from "@supabase/supabase-js";
 import {
   buildBrevoSmtpPayload,
   filterValidRecipients,
@@ -390,9 +391,93 @@ async function sendBrevoEmail({ to, subject, htmlContent, senderName, senderEmai
   return { ok: response.ok, status: response.status, result };
 }
 
+async function runFounder24hCron(res) {
+  const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return json(res, 500, { error: "Supabase service role credentials not configured" });
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const now = Date.now();
+  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+  let sentCount = 0;
+  const errors = [];
+
+  try {
+    // 1. Fetch users from auth.users
+    const { data: authData, error: authError } = await supabase.auth.admin.listUsers({
+      perPage: 500,
+    });
+
+    if (!authError && authData?.users) {
+      for (const u of authData.users) {
+        if (!u.email) continue;
+        const createdAtTime = new Date(u.created_at).getTime();
+        const isOlderThan24h = (now - createdAtTime) >= TWENTY_FOUR_HOURS_MS;
+        const alreadySent = Boolean(u.user_metadata?.founder_welcome_sent_at);
+
+        if (isOlderThan24h && !alreadySent) {
+          const validation = validateRecipientEmail(u.email);
+          if (validation.ok) {
+            const fullName = u.user_metadata?.full_name || u.user_metadata?.name || "";
+            const founderHtml = generateFounderWelcomeEmailHtml({
+              firstName: fullName ? fullName.trim().split(" ")[0] : "",
+              name: fullName || "Explorer",
+              email: validation.email,
+            });
+
+            const sendRes = await sendBrevoEmail({
+              to: [{ email: validation.email, name: fullName || "Explorer" }],
+              subject: "A Personal Note From Our Founder ✨",
+              htmlContent: founderHtml,
+              senderName: "Founder @ Merry360X",
+              senderEmail: DEFAULT_FROM_EMAIL,
+              tags: ["welcome-founder-24h", "automated-cron"],
+            });
+
+            if (sendRes.ok) {
+              sentCount++;
+              await supabase.auth.admin.updateUserById(u.id, {
+                user_metadata: {
+                  ...u.user_metadata,
+                  founder_welcome_sent_at: new Date().toISOString(),
+                },
+              }).catch(() => {});
+            } else {
+              errors.push({ email: validation.email, error: sendRes.result });
+            }
+          }
+        }
+      }
+    }
+  } catch (cronErr) {
+    console.error("[welcome-email-cron] Cron error:", cronErr);
+    return json(res, 500, { error: "Cron execution failed", message: cronErr.message });
+  }
+
+  return json(res, 200, {
+    success: true,
+    action: "cron-founder-24h",
+    sentCount,
+    errors,
+  });
+}
+
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
     return json(res, 204, {});
+  }
+
+  const url = new URL(req.url, "http://localhost");
+  const action = url.searchParams.get("action");
+
+  if (action === "cron-founder-24h" || req.query?.action === "cron-founder-24h") {
+    return runFounder24hCron(res);
   }
 
   if (req.method !== "POST") {
