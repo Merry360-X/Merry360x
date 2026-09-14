@@ -2,6 +2,7 @@ import { calculateBookingFinancialsFromDiscountedListing, calculateGuestTotal } 
 import { useMemo, useEffect, useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { getTourPriceSuffix, getTourPricingModel } from "@/lib/tour-pricing";
+import { calculatePropertyStayPrice, CustomPriceRange, PropertyStayPricing } from "@/lib/property-pricing";
 import { useTranslation } from "react-i18next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -149,10 +150,11 @@ export default function TripCart() {
     const routeIds = items.filter(i => i.item_type === 'transport_route').map(i => String(i.reference_id));
     const serviceIds = items.filter(i => i.item_type === 'transport_service').map(i => String(i.reference_id));
 
-    const [tours, packages, properties, vehicles, airportPricing, routes, services] = await Promise.all([
+    const [tours, packages, properties, propertyCustomPrices, vehicles, airportPricing, routes, services] = await Promise.all([
       tourIds.length ? supabase.from('tours').select('id, title, price_per_person, currency, images, duration_days').in('id', tourIds).then(r => { console.log('Tours loaded:', r.data?.length); return r.data || []; }) : [],
       packageIds.length ? supabase.from('tour_packages').select('id, title, price_per_adult, currency, cover_image, gallery_images, duration').in('id', packageIds).then(r => { console.log('Packages loaded:', r.data?.length); return r.data || []; }) : [],
       propertyIds.length ? supabase.from('properties').select('id, title, price_per_night, currency, images, location, weekly_discount, monthly_discount').in('id', propertyIds).then(r => { console.log('Properties loaded:', r.data?.length); return r.data || []; }) : [],
+      propertyIds.length ? ((supabase.from('property_custom_prices').select('property_id, start_date, end_date, custom_price_per_night') as any).in('property_id', propertyIds).then((r: any) => r.data || [])) : [],
       vehicleIds.length ? supabase.from('transport_vehicles').select('id, title, price_per_day, currency, image_url, vehicle_type, seats').in('id', vehicleIds).then(r => { console.log('Vehicles loaded:', r.data?.length); return r.data || []; }) : [],
       airportPricingIds.length
         ? (supabase as any)
@@ -200,6 +202,24 @@ export default function TripCart() {
         return null;
       }
 
+      // Get metadata from localStorage or item
+      const metadata = getCartItemMetadata(String(item.reference_id)) || item.metadata;
+      let propertyStayPrice: PropertyStayPricing | null = null;
+      if (resolvedType === 'property') {
+        const customList = (propertyCustomPrices || []).filter((cp: any) => String(cp.property_id) === refId);
+        propertyStayPrice = calculatePropertyStayPrice(
+          metadata?.check_in,
+          metadata?.check_out,
+          Number(data.price_per_night || 0),
+          customList
+        );
+        if (metadata) {
+          metadata.stay_base_total = propertyStayPrice.baseTotal;
+          metadata.custom_prices_applied = propertyStayPrice.hasCustomPrice;
+          metadata.nights = propertyStayPrice.nights;
+        }
+      }
+
       const getDetails = () => {
         switch (resolvedType) {
           case 'tour':
@@ -209,7 +229,7 @@ export default function TripCart() {
           case 'property':
             return { 
               title: data.title, 
-              price: data.price_per_night, 
+              price: propertyStayPrice ? propertyStayPrice.averageNightlyRate : data.price_per_night, 
               currency: data.currency || 'RWF', 
               image: data.images?.[0], 
               meta: data.location,
@@ -252,9 +272,6 @@ export default function TripCart() {
 
       const details = getDetails();
       if (!details) return null;
-
-      // Get metadata from localStorage
-      const metadata = getCartItemMetadata(String(item.reference_id));
 
       return { 
         id: item.id, 
@@ -424,8 +441,12 @@ export default function TripCart() {
         : 0;
       const breakfastTotal = breakfastPerNight > 0 ? breakfastPerNight * nights : 0;
       
+      const baseItemStayPrice = (isProperty && typeof item.metadata?.stay_base_total === 'number')
+        ? item.metadata.stay_base_total
+        : item.price * multiplier;
+
       // Calculate base price (before any discounts)
-      const baseItemTotal = item.price * multiplier + breakfastTotal;
+      const baseItemTotal = baseItemStayPrice + breakfastTotal;
       const convertedBase = convertAmount(baseItemTotal, item.currency, curr, usdRates) ?? baseItemTotal;
       baseSubtotalAmount += convertedBase;
       

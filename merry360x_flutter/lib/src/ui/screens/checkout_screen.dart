@@ -424,6 +424,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   DateTime? _checkIn;
   DateTime? _checkOut;
   int _guests = 1;
+  List<Map<String, dynamic>> _customPrices = [];
 
   // Promo code
   final _promoCtrl = TextEditingController();
@@ -461,6 +462,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _phoneFocusNode.addListener(_onPhoneFocusChange);
     // Detect user region
     _detectRegion();
+    // Load custom pricing for property
+    _loadCustomPrices();
     // Load discount passed from trip cart
     if (widget.initialDiscount != null && widget.initialDiscountCode != null) {
       _appliedDiscount = widget.initialDiscount;
@@ -469,6 +472,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       clearPendingPromoCode();
     } else {
       _bootstrapPendingPromoCode();
+    }
+  }
+
+  Future<void> _loadCustomPrices() async {
+    final propId = (widget.item['id'] ?? widget.item['property_id'] ?? '').toString();
+    if (itemType == 'property' && propId.isNotEmpty) {
+      try {
+        final prices = await widget.session.api.fetchPropertyCustomPrices(propertyId: propId);
+        if (mounted) {
+          setState(() {
+            _customPrices = prices;
+          });
+        }
+      } catch (_) {}
     }
   }
 
@@ -706,11 +723,36 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
   }
 
+  double _calculatePropertyStayTotal() {
+    final defaultPrice = double.tryParse('${item['price_per_night'] ?? 0}') ?? 0.0;
+    if (_checkIn == null || _checkOut == null || _customPrices.isEmpty) {
+      return defaultPrice * _nights;
+    }
+    double total = 0.0;
+    for (int i = 0; i < _nights; i++) {
+      final nightDate = _checkIn!.add(Duration(days: i));
+      final dateStr = nightDate.toIso8601String().substring(0, 10);
+      double nightPrice = defaultPrice;
+      for (final cp in _customPrices) {
+        final sStr = (cp['start_date'] ?? '').toString().substring(0, 10);
+        final eStr = (cp['end_date'] ?? '').toString().substring(0, 10);
+        if (sStr.isNotEmpty && eStr.isNotEmpty && dateStr.compareTo(sStr) >= 0 && dateStr.compareTo(eStr) <= 0) {
+          nightPrice = (cp['custom_price_per_night'] as num?)?.toDouble() ?? defaultPrice;
+          break;
+        }
+      }
+      total += nightPrice;
+    }
+    return total;
+  }
+
   double get _subtotal {
     switch (itemType) {
       case 'tour':
       case 'tour_package':
         return _pricePerUnit * _guests;
+      case 'property':
+        return _calculatePropertyStayTotal();
       default:
         return _pricePerUnit * _nights;
     }
@@ -746,6 +788,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   /// Per-item base price (before fees) for a cart item map.
   double _baseForCartItem(Map<String, dynamic> ci) {
     final t = (ci['item_type'] ?? 'property').toString();
+    if (t == 'property' && ci['stay_base_total'] != null) {
+      final stayBase = double.tryParse('${ci['stay_base_total']}') ?? 0;
+      if (stayBase > 0) return stayBase.clamp(0.0, double.infinity).toDouble();
+    }
     final qty = int.tryParse('${ci['quantity'] ?? 1}') ?? 1;
     double price;
     switch (t) {

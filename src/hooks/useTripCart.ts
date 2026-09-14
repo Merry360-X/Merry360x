@@ -17,6 +17,8 @@ export interface CartItemMetadata {
   breakfast_total?: number;
   start_date?: string;
   end_date?: string;
+  stay_base_total?: number;
+  custom_prices_applied?: boolean;
 }
 
 export interface GuestCartItem {

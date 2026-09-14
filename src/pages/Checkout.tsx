@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getTourBillingQuantity, getTourPerPersonUnitPrice, getTourPriceSuffix, getTourPricingModel } from "@/lib/tour-pricing";
+import { calculatePropertyStayPrice, CustomPriceRange, PropertyStayPricing } from "@/lib/property-pricing";
 
 interface CartItem {
   id: string;
@@ -1215,17 +1216,26 @@ export default function CheckoutNew() {
   }
 
   async function fetchDirectBooking(propertyId: string): Promise<CartItem[]> {
-    // Fetch the property details directly
-    const { data: property, error } = await ((supabase
-      .from('properties')
-      .select('id, title, price_per_night, currency, images, location, weekly_discount, monthly_discount, breakfast_available, breakfast_price_per_night') as any)
-      .eq('id', propertyId)
-      .single());
-    
-    if (error || !property) {
-      console.error("Failed to load property for direct booking:", error);
+    // Fetch the property details and custom prices
+    const [propertyRes, customPricesRes] = await Promise.all([
+      (supabase
+        .from('properties')
+        .select('id, title, price_per_night, currency, images, location, weekly_discount, monthly_discount, breakfast_available, breakfast_price_per_night, host_id') as any)
+        .eq('id', propertyId)
+        .single(),
+      supabase
+        .from('property_custom_prices')
+        .select('start_date, end_date, custom_price_per_night')
+        .eq('property_id', propertyId)
+        .order('start_date', { ascending: true })
+    ]);
+
+    const property = propertyRes.data;
+    if (propertyRes.error || !property) {
+      console.error("Failed to load property for direct booking:", propertyRes.error);
       return [];
     }
+    const customPrices = (customPricesRes.data || []) as CustomPriceRange[];
 
     const withBreakfast = searchParams.get("withBreakfast") === "1";
     const breakfastPriceFromQuery = Number(searchParams.get("breakfastPricePerNight") || 0);
@@ -1233,20 +1243,18 @@ export default function CheckoutNew() {
     const breakfastPricePerNight = breakfastPriceFromQuery > 0 ? breakfastPriceFromQuery : breakfastPriceFromProperty;
     const breakfastIncluded = Boolean((property as any).breakfast_available) && withBreakfast && breakfastPricePerNight > 0;
     
-    // Calculate nights from checkIn/checkOut params
+    // Calculate nights and date-by-date pricing from checkIn/checkOut params
     const checkIn = searchParams.get("checkIn");
     const checkOut = searchParams.get("checkOut");
-    let nights = 1;
-    
-    if (checkIn && checkOut) {
-      const start = parseDateValue(checkIn);
-      const end = parseDateValue(checkOut);
-      if (start && end) {
-        nights = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-      }
-    }
-    
     const guests = parseInt(searchParams.get("guests") || "1", 10);
+
+    const pricing = calculatePropertyStayPrice(
+      checkIn,
+      checkOut,
+      Number(property.price_per_night || 0),
+      customPrices
+    );
+    const nights = pricing.nights;
     
     // Return as a cart item
     return [{
@@ -1255,17 +1263,20 @@ export default function CheckoutNew() {
       reference_id: property.id,
       quantity: nights,
       title: property.title,
-      price: property.price_per_night,
+      price: pricing.averageNightlyRate,
       currency: property.currency || 'RWF',
       image: property.images?.[0],
       meta: property.location,
       weekly_discount: property.weekly_discount,
       monthly_discount: property.monthly_discount,
+      host_id: property.host_id || null,
       metadata: {
         check_in: checkIn || undefined,
         check_out: checkOut || undefined,
         nights,
         guests,
+        stay_base_total: pricing.baseTotal,
+        custom_prices_applied: pricing.hasCustomPrice,
         breakfast_included: breakfastIncluded,
         breakfast_price_per_night: breakfastIncluded ? breakfastPricePerNight : 0,
         breakfast_total: breakfastIncluded ? breakfastPricePerNight * nights : 0,
@@ -1313,10 +1324,11 @@ export default function CheckoutNew() {
     const routeIds = items.filter(i => i.item_type === 'transport_route').map(i => String(i.reference_id));
     const serviceIds = items.filter(i => i.item_type === 'transport_service').map(i => String(i.reference_id));
 
-    const [tours, packages, properties, vehicles, airportPricing, routes, services] = await Promise.all([
+    const [tours, packages, properties, propertyCustomPrices, vehicles, airportPricing, routes, services] = await Promise.all([
       tourIds.length ? ((supabase.from('tours').select('id, title, price_per_person, currency, images, duration_days, pricing_tiers, created_by, host_id') as any).in('id', tourIds).then((r: any) => r.data || [])) : [],
       packageIds.length ? ((supabase.from('tour_packages').select('id, title, price_per_adult, currency, cover_image, gallery_images, duration, pricing_tiers, host_id') as any).in('id', packageIds).then((r: any) => r.data || [])) : [],
       propertyIds.length ? ((supabase.from('properties').select('id, title, price_per_night, currency, images, location, weekly_discount, monthly_discount, breakfast_available, breakfast_price_per_night, host_id') as any).in('id', propertyIds).then((r: any) => r.data || [])) : [],
+      propertyIds.length ? ((supabase.from('property_custom_prices').select('property_id, start_date, end_date, custom_price_per_night') as any).in('property_id', propertyIds).then((r: any) => r.data || [])) : [],
       vehicleIds.length ? ((supabase.from('transport_vehicles').select('id, title, price_per_day, currency, image_url, vehicle_type, seats, created_by') as any).in('id', vehicleIds).then((r: any) => r.data || [])) : [],
       airportPricingIds.length
         ? ((supabase as any)
@@ -1361,8 +1373,23 @@ export default function CheckoutNew() {
         return null;
       }
 
-      // Get metadata from localStorage for properties
-      const metadata = resolvedType === 'property' ? getCartItemMetadata(refId) : undefined;
+      // Get metadata from localStorage or item
+      const metadata = resolvedType === 'property' ? (getCartItemMetadata(refId) || item.metadata || {}) : undefined;
+      let propertyStayPrice: PropertyStayPricing | null = null;
+      if (resolvedType === 'property') {
+        const customList = (propertyCustomPrices || []).filter((cp: any) => String(cp.property_id) === refId);
+        propertyStayPrice = calculatePropertyStayPrice(
+          metadata?.check_in,
+          metadata?.check_out,
+          Number(data.price_per_night || 0),
+          customList
+        );
+        if (metadata) {
+          metadata.stay_base_total = propertyStayPrice.baseTotal;
+          metadata.custom_prices_applied = propertyStayPrice.hasCustomPrice;
+          metadata.nights = propertyStayPrice.nights;
+        }
+      }
 
       const getDetails = () => {
         switch (resolvedType) {
@@ -1407,7 +1434,16 @@ export default function CheckoutNew() {
               };
             }
           case 'property':
-            return { title: data.title, price: data.price_per_night, currency: data.currency || 'RWF', image: data.images?.[0], meta: data.location, weekly_discount: data.weekly_discount, monthly_discount: data.monthly_discount, host_id: data.host_id || null };
+            return {
+              title: data.title,
+              price: propertyStayPrice ? propertyStayPrice.averageNightlyRate : data.price_per_night,
+              currency: data.currency || 'RWF',
+              image: data.images?.[0],
+              meta: data.location,
+              weekly_discount: data.weekly_discount,
+              monthly_discount: data.monthly_discount,
+              host_id: data.host_id || null
+            };
           case 'transport_vehicle':
             return { title: data.title, price: data.price_per_day, currency: data.currency || 'RWF', image: data.image_url, meta: `${data.vehicle_type} • ${data.seats} seats`, host_id: data.created_by || null };
           case 'airport_transfer_pricing': {
@@ -1470,7 +1506,10 @@ export default function CheckoutNew() {
         ? Number(item.metadata?.breakfast_price_per_night || 0)
         : 0;
       const breakfastTotal = breakfastPerNight > 0 ? breakfastPerNight * nights : 0;
-      const itemTotal = item.price * multiplier + breakfastTotal;
+      const baseItemStayPrice = (isProperty && typeof item.metadata?.stay_base_total === 'number')
+        ? item.metadata.stay_base_total
+        : item.price * multiplier;
+      const itemTotal = baseItemStayPrice + breakfastTotal;
       const converted = convertAmount(itemTotal, item.currency, curr, usdRates) ?? itemTotal;
       subtotalAmount += converted;
       
@@ -2062,7 +2101,10 @@ export default function CheckoutNew() {
           ? Number(item.metadata?.breakfast_price_per_night || 0)
           : 0;
         const breakfastTotal = breakfastPerNight > 0 ? breakfastPerNight * nights : 0;
-        const itemTotal = Number(item.price || 0) * (isAccommodation ? nights : Number(item.quantity || 1)) + breakfastTotal;
+        const baseItemStayPrice = (isAccommodation && typeof item.metadata?.stay_base_total === 'number')
+          ? item.metadata.stay_base_total
+          : Number(item.price || 0) * (isAccommodation ? nights : Number(item.quantity || 1));
+        const itemTotal = baseItemStayPrice + breakfastTotal;
         // IMPORTANT: Keep each item's calculated_price in the item's own currency
         // so booking records can store a consistent (amount + currency) pair.
         // Payment conversion to RWF is handled separately at the checkout level.
@@ -3349,7 +3391,18 @@ export default function CheckoutNew() {
                   {/* Order Items */}
                   <div className="divide-y rounded-xl border overflow-hidden">
                     {cartItems.map((item) => {
-                      const itemPrice = convertAmount(item.price * item.quantity, item.currency, displayCurrency, usdRates) ?? item.price * item.quantity;
+                      const isProperty = item.item_type === 'property';
+                      const nights = isProperty && item.metadata?.nights ? item.metadata.nights : item.quantity;
+                      const multiplier = isProperty ? nights : item.quantity;
+                      const breakfastPerNight = isProperty && item.metadata?.breakfast_included
+                        ? Number(item.metadata?.breakfast_price_per_night || 0)
+                        : 0;
+                      const breakfastTotal = breakfastPerNight > 0 ? breakfastPerNight * nights : 0;
+                      const baseItemStayPrice = (isProperty && typeof item.metadata?.stay_base_total === 'number')
+                        ? item.metadata.stay_base_total
+                        : item.price * multiplier;
+                      const rawItemTotal = baseItemStayPrice + breakfastTotal;
+                      const itemPrice = convertAmount(rawItemTotal, item.currency, displayCurrency, usdRates) ?? rawItemTotal;
                       const mode = searchParams.get("mode");
                       const checkIn = searchParams.get("checkIn");
                       const checkOut = searchParams.get("checkOut");
@@ -3595,7 +3648,10 @@ export default function CheckoutNew() {
                     ? Number(item.metadata?.breakfast_price_per_night || 0)
                     : 0;
                   const breakfastTotal = breakfastPerNight > 0 ? breakfastPerNight * nights : 0;
-                  const rawItemTotal = item.price * multiplier + breakfastTotal;
+                  const baseItemStayPrice = (isProperty && typeof item.metadata?.stay_base_total === 'number')
+                    ? item.metadata.stay_base_total
+                    : item.price * multiplier;
+                  const rawItemTotal = baseItemStayPrice + breakfastTotal;
                   const itemPrice = convertAmount(rawItemTotal, item.currency, displayCurrency, usdRates) ?? rawItemTotal;
                   
                   return (

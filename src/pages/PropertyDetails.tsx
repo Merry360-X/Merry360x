@@ -1303,6 +1303,7 @@ export default function PropertyDetails() {
       breakfast_included: breakfastAddon.includeBreakfast,
       breakfast_price_per_night: breakfastAddon.includeBreakfast ? breakfastAddon.breakfastPricePerNight : 0,
       breakfast_total: breakfastAddon.total,
+      stay_base_total: baseTotal,
     };
     await addToCart("property", data.id, 1, metadata);
   };
