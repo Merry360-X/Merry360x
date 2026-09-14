@@ -525,7 +525,14 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     final title = (item['title'] ?? item['name'] ?? 'Listing').toString();
     final location = (item['location'] ?? item['city'] ?? '').toString();
     final id = (item['id'] ?? '').toString();
-    final url = 'https://merry360x.com/listing/$id';
+    final String url;
+    if (itemType == 'tour' || itemType == 'tour_package') {
+      url = 'https://merry360x.com/tours/$id';
+    } else if (itemType == 'transport' || itemType == 'car_rental' || itemType == 'airport_transfer') {
+      url = 'https://merry360x.com/transport';
+    } else {
+      url = 'https://merry360x.com/accommodations/$id';
+    }
     SharePlus.instance.share(
       ShareParams(
         text: '$title${location.isNotEmpty ? ' in $location' : ''}\n$url',
@@ -655,15 +662,16 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
               ),
 
               // ── Content ──
-              Container(
-                margin: const EdgeInsets.only(top: -20),
-                decoration: const BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(24),
-                    topRight: Radius.circular(24),
+              Transform.translate(
+                offset: const Offset(0, -20),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(24),
+                      topRight: Radius.circular(24),
+                    ),
                   ),
-                ),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(18, 28, 18, 24),
                   child: Column(
@@ -1067,7 +1075,8 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                   ),
                 ),
               ),
-            ],
+            ),
+          ],
           ),
           // ── Sticky toolbar ──
           Positioned(

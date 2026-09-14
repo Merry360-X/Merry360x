@@ -264,6 +264,63 @@ export default function PropertyDetails() {
     refetchOnWindowFocus: true,
   });
 
+  const [isResolvingFallback, setIsResolvingFallback] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!isLoading && !isError && !data && propertyId) {
+      setIsResolvingFallback(true);
+      (async () => {
+        try {
+          // 1. Check if ID exists in 'tours' table
+          const { data: tourData } = await (supabase.from("tours") as any)
+            .select("id")
+            .eq("id", propertyId)
+            .maybeSingle();
+
+          if (!active) return;
+          if (tourData?.id) {
+            navigate(`/tours/${propertyId}`, { replace: true });
+            return;
+          }
+
+          // 2. Check if ID exists in 'tour_packages' table
+          const { data: pkgData } = await (supabase.from("tour_packages") as any)
+            .select("id")
+            .eq("id", propertyId)
+            .maybeSingle();
+
+          if (!active) return;
+          if (pkgData?.id) {
+            navigate(`/tours/${propertyId}`, { replace: true });
+            return;
+          }
+
+          // 3. Check if ID exists in 'transport_vehicles' table
+          const { data: vehicleData } = await (supabase.from("transport_vehicles") as any)
+            .select("id")
+            .eq("id", propertyId)
+            .maybeSingle();
+
+          if (!active) return;
+          if (vehicleData?.id) {
+            navigate(`/transport`, { replace: true });
+            return;
+          }
+        } catch (e) {
+          console.error("Universal listing fallback check error:", e);
+        } finally {
+          if (active) setIsResolvingFallback(false);
+        }
+      })();
+    } else {
+      setIsResolvingFallback(false);
+    }
+    return () => {
+      active = false;
+    };
+  }, [isLoading, isError, data, propertyId, navigate]);
+
   const isHotelListing = useMemo(
     () => String(data?.property_type || "").trim().toLowerCase() === "hotel",
     [data?.property_type]
@@ -1541,7 +1598,11 @@ export default function PropertyDetails() {
           <div className="py-20 text-center">
             <p className="text-muted-foreground">{t("common.couldNotLoadProperties")}</p>
           </div>
-        ) : !isPageLoading && !data ? (
+        ) : (isPageLoading || isResolvingFallback) ? (
+          <div className="py-20 flex justify-center items-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+          </div>
+        ) : !data ? (
           <div className="py-20 text-center">
             <p className="text-muted-foreground">{t("common.noPublishedProperties")}</p>
             <div className="mt-6">
@@ -1550,7 +1611,7 @@ export default function PropertyDetails() {
               </Link>
             </div>
           </div>
-        ) : !isPageLoading ? (
+        ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* Gallery + content */}
             <div className="lg:col-span-7 space-y-6">
