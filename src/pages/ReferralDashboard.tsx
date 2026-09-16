@@ -219,23 +219,49 @@ export default function ReferralDashboard() {
     }
   };
 
+  // Derived financial metrics
+  const calculatedTotalCommissions = commissions.reduce(
+    (sum: number, c: any) => sum + Number(c.amount || c.affiliate_commission || 0),
+    0
+  );
+  const totalEarnings = calculatedTotalCommissions > 0 ? calculatedTotalCommissions : Number(affiliate?.total_earnings || 0);
+
+  const completedPayouts = payouts
+    .filter((p: any) => p.status === "completed")
+    .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+  const paidEarnings = completedPayouts > 0 ? completedPayouts : Number(affiliate?.paid_earnings || 0);
+
+  const pendingPayouts = payouts
+    .filter((p: any) => p.status === "pending" || p.status === "processing")
+    .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+
+  // Remaining Balance after completed payouts
+  const remainingBalance = Math.max(0, totalEarnings - paidEarnings);
+  // Balance available to withdraw (excluding requests already pending review)
+  const availableToRequest = Math.max(0, remainingBalance - pendingPayouts);
+
+  const commissionRate = Number(affiliate?.commission_rate || 8.0);
+  const totalReferrals = affiliate?.total_referrals || commissions.length || 0;
+  const partnerDisplayName = affiliate?.full_name || profile?.full_name || affiliate?.company_name || user?.email;
+  const partnerPayoutMethod = affiliate?.payout_method || profile?.payout_method || "mtn_momo";
+  const partnerPayoutTarget = affiliate?.payout_phone || profile?.payout_phone || profile?.payout_bank_account || profile?.phone || "—";
+
   // Handle Payout Request Submission
   const handleRequestPayout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!affiliate?.id) return;
 
     const amountNum = parseFloat(payoutAmount);
-    const available = Number(affiliate.pending_earnings || affiliate.total_earnings || 0);
 
     if (isNaN(amountNum) || amountNum <= 0) {
       toast({ title: "Invalid amount", description: "Please enter a valid payout amount.", variant: "destructive" });
       return;
     }
 
-    if (amountNum > available) {
+    if (amountNum > availableToRequest) {
       toast({
         title: "Insufficient balance",
-        description: `Your available balance is ${formatNumber(available)} RWF.`,
+        description: `Your available balance to withdraw is ${formatNumber(availableToRequest)} RWF.`,
         variant: "destructive",
       });
       return;
@@ -268,6 +294,7 @@ export default function ReferralDashboard() {
       setPayoutDialogOpen(false);
       setPayoutAmount("");
       queryClient.invalidateQueries({ queryKey: ["referral-payouts", affiliate.id] });
+      queryClient.invalidateQueries({ queryKey: ["referral-partner", user?.id] });
     } catch (err: any) {
       toast({
         title: "Payout request failed",
@@ -278,15 +305,6 @@ export default function ReferralDashboard() {
       setRequestingPayout(false);
     }
   };
-
-  const totalEarnings = Number(affiliate?.total_earnings || 0);
-  const pendingEarnings = Number(affiliate?.pending_earnings || 0);
-  const paidEarnings = Number(affiliate?.paid_earnings || 0);
-  const commissionRate = Number(affiliate?.commission_rate || 10.0);
-  const totalReferrals = affiliate?.total_referrals || commissions.length || 0;
-  const partnerDisplayName = affiliate?.full_name || profile?.full_name || affiliate?.company_name || user?.email;
-  const partnerPayoutMethod = affiliate?.payout_method || profile?.payout_method || "mtn_momo";
-  const partnerPayoutTarget = affiliate?.payout_phone || profile?.payout_phone || profile?.payout_bank_account || profile?.phone || "—";
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50/50">
@@ -326,7 +344,7 @@ export default function ReferralDashboard() {
                   <DialogHeader>
                     <DialogTitle>Request Commission Payout</DialogTitle>
                     <DialogDescription>
-                      Available balance: <strong className="text-slate-900">{formatNumber(pendingEarnings > 0 ? pendingEarnings : totalEarnings)} RWF</strong>.
+                      Available balance: <strong className="text-slate-900">{formatNumber(availableToRequest)} RWF</strong>.
                       Payouts are sent to your configured {partnerPayoutMethod === "bank" ? "Bank Account" : "Mobile Money Number"}.
                     </DialogDescription>
                   </DialogHeader>
@@ -338,6 +356,7 @@ export default function ReferralDashboard() {
                         id="payoutAmount"
                         type="number"
                         min="1000"
+                        max={availableToRequest || undefined}
                         step="100"
                         value={payoutAmount}
                         onChange={(e) => setPayoutAmount(e.target.value)}
@@ -357,7 +376,11 @@ export default function ReferralDashboard() {
                       </div>
                     </div>
 
-                    <Button type="submit" disabled={requestingPayout} className="w-full bg-rose-500 hover:bg-rose-600 text-white">
+                    <Button 
+                      type="submit" 
+                      disabled={requestingPayout || availableToRequest <= 0} 
+                      className="w-full bg-rose-500 hover:bg-rose-600 text-white"
+                    >
                       {requestingPayout ? "Submitting Request..." : "Confirm Payout Request"}
                     </Button>
                   </form>
@@ -386,14 +409,18 @@ export default function ReferralDashboard() {
             <Card className="border-slate-200 bg-white shadow-sm">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Pending Commissions</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Remaining Balance</span>
                   <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
                     <Clock className="w-4 h-4" />
                   </div>
                 </div>
                 <div className="mt-3">
-                  <div className="text-2xl font-bold text-slate-900">{formatNumber(pendingEarnings)} RWF</div>
-                  <p className="text-xs text-slate-500 mt-1">Awaiting completion / payout</p>
+                  <div className="text-2xl font-bold text-slate-900">{formatNumber(remainingBalance)} RWF</div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {paidEarnings > 0 
+                      ? `${formatNumber(paidEarnings)} RWF paid out` 
+                      : "Available to withdraw"}
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -566,7 +593,6 @@ export default function ReferralDashboard() {
                           <TableHead className="text-xs font-semibold">Service Type</TableHead>
                           <TableHead className="text-xs font-semibold">Booking Amount</TableHead>
                           <TableHead className="text-xs font-semibold">Commission ({commissionRate}%)</TableHead>
-                          <TableHead className="text-xs font-semibold">Status</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -587,20 +613,6 @@ export default function ReferralDashboard() {
                             </TableCell>
                             <TableCell className="text-xs font-mono font-semibold text-emerald-600">
                               +{formatMoney(c.amount || c.affiliate_commission || 0, c.currency || "RWF")}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant="outline"
-                                className={
-                                  c.status === "paid"
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                    : c.status === "approved"
-                                    ? "bg-blue-50 text-blue-700 border-blue-200"
-                                    : "bg-amber-50 text-amber-700 border-amber-200"
-                                }
-                              >
-                                {c.status ? c.status.toUpperCase() : "PENDING"}
-                              </Badge>
                             </TableCell>
                           </TableRow>
                         ))}

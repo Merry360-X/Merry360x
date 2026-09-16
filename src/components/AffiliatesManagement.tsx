@@ -260,21 +260,51 @@ export const AffiliatesManagement = () => {
   };
 
   const updatePayoutStatus = async (payoutId: string, status: string) => {
-    const { error } = await supabase
+    const { data: updatedPayout, error } = await supabase
       .from('affiliate_payouts')
       .update({ 
         status,
         processed_at: status === 'completed' ? new Date().toISOString() : null
       } as any)
-      .eq('id', payoutId);
+      .eq('id', payoutId)
+      .select('*, affiliates(*)')
+      .maybeSingle();
 
     if (error) {
       toast({ title: "Payout error", description: error.message, variant: "destructive" });
       return;
     }
 
+    // Sync affiliate paid_earnings and pending_earnings
+    if (updatedPayout?.affiliate_id) {
+      try {
+        const { data: allAffiliatePayouts } = await supabase
+          .from('affiliate_payouts')
+          .select('amount, status')
+          .eq('affiliate_id', updatedPayout.affiliate_id);
+
+        const totalPaid = (allAffiliatePayouts || [])
+          .filter(p => p.status === 'completed')
+          .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+        const totalEarnings = Number(updatedPayout.affiliates?.total_earnings || 0);
+        const remaining = Math.max(0, totalEarnings - totalPaid);
+
+        await supabase
+          .from('affiliates')
+          .update({
+            paid_earnings: totalPaid,
+            pending_earnings: remaining,
+          } as any)
+          .eq('id', updatedPayout.affiliate_id);
+      } catch (err) {
+        console.error("Failed to sync affiliate earnings after payout status update:", err);
+      }
+    }
+
     toast({ title: "Payout status updated", description: `Marked as ${status}` });
     qc.invalidateQueries({ queryKey: ['admin-affiliate-payouts'] });
+    qc.invalidateQueries({ queryKey: ['admin-affiliates'] });
     qc.invalidateQueries({ queryKey: ['admin-affiliate-stats'] });
   };
 
