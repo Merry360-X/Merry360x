@@ -137,7 +137,7 @@ const Navbar = () => {
         .or(`starts_at.is.null,starts_at.lte.${now}`)
         .or(`ends_at.is.null,ends_at.gte.${now}`)
         .order("sort_order", { ascending: true });
-      
+
       if (error) {
         console.warn("Failed to fetch ad banners:", error);
         return [];
@@ -210,7 +210,7 @@ const Navbar = () => {
         .select("full_name, avatar_url")
         .eq("user_id", user!.id)
         .single();
-      
+
       if (error) {
         console.warn("Failed to fetch user profile:", error);
         return null;
@@ -437,11 +437,10 @@ const Navbar = () => {
                   <Link
                     key={link.path}
                     to={link.path}
-                    className={`shrink-0 px-2.5 xl:px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                      isActive
+                    className={`shrink-0 px-2.5 xl:px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${isActive
                         ? "bg-primary/10 text-primary border border-primary"
                         : "text-foreground hover:text-primary"
-                    }`}
+                      }`}
                   >
                     {t(link.key)}
                   </Link>
@@ -595,9 +594,8 @@ const Navbar = () => {
                       />
                     ) : null}
                     <div
-                      className={`w-full h-full flex items-center justify-center ${
-                        userProfile?.avatar_url ? 'hidden' : ''
-                      }`}
+                      className={`w-full h-full flex items-center justify-center ${userProfile?.avatar_url ? 'hidden' : ''
+                        }`}
                     >
                       {getInitials()}
                     </div>
@@ -608,7 +606,7 @@ const Navbar = () => {
                     {user.email}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/profile") }>
+                  <DropdownMenuItem onClick={() => navigate("/profile")}>
                     <Settings className="w-4 h-4 mr-2" />
                     Account
                   </DropdownMenuItem>
@@ -687,7 +685,7 @@ const Navbar = () => {
                       {t("actions.becomeHost")}
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem onClick={() => navigate(isReferral ? "/referral-dashboard" : "/become-referral")}>
+                  <DropdownMenuItem onClick={() => navigate(isReferral ? "/referral-dashboard" : "/Partner")}>
                     <Share2 className="w-4 h-4 mr-2 text-rose-500" />
                     {isReferral ? "Referral Dashboard" : "Partner Referral Program"}
                   </DropdownMenuItem>
@@ -823,11 +821,10 @@ const Navbar = () => {
                       <Link
                         key={item.to}
                         to={item.to}
-                        className={`flex min-w-0 items-center gap-3 rounded-xl border px-3 py-3 text-sm font-medium transition-colors ${
-                          isActive
+                        className={`flex min-w-0 items-center gap-3 rounded-xl border px-3 py-3 text-sm font-medium transition-colors ${isActive
                             ? "bg-primary/10 text-primary border-primary"
                             : "bg-background text-foreground border-border hover:border-primary"
-                        }`}
+                          }`}
                       >
                         <Icon className="h-4 w-4 shrink-0" />
                         <span className="truncate">{item.label}</span>
@@ -867,11 +864,10 @@ const Navbar = () => {
                         onClick={() => {
                           if (item.to === "/my-bookings") markBookingDecisionsSeen();
                         }}
-                        className={`relative flex min-h-[72px] min-w-0 flex-col justify-between rounded-xl border px-3 py-3 transition-colors ${
-                          isActive
+                        className={`relative flex min-h-[72px] min-w-0 flex-col justify-between rounded-xl border px-3 py-3 transition-colors ${isActive
                             ? "bg-primary/10 text-primary border-primary"
                             : "bg-background text-foreground border-border hover:border-primary"
-                        }`}
+                          }`}
                       >
                         {item.badge ? (
                           <span className="absolute right-2 top-2 inline-flex min-w-[18px] h-[18px] px-1 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-semibold">
@@ -904,9 +900,8 @@ const Navbar = () => {
                             />
                           ) : null}
                           <div
-                            className={`w-full h-full flex items-center justify-center ${
-                              userProfile?.avatar_url ? 'hidden' : ''
-                            }`}
+                            className={`w-full h-full flex items-center justify-center ${userProfile?.avatar_url ? 'hidden' : ''
+                              }`}
                           >
                             {getInitials()}
                           </div>
@@ -987,7 +982,7 @@ const Navbar = () => {
                         size="sm"
                         className="w-full justify-start gap-2 min-[560px]:col-span-2"
                         onClick={() => {
-                          navigate(isReferral ? "/referral-dashboard" : "/become-referral");
+                          navigate(isReferral ? "/referral-dashboard" : "/Partner");
                         }}
                       >
                         <Share2 className="w-4 h-4 text-rose-500" />

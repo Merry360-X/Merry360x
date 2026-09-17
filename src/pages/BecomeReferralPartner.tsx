@@ -12,20 +12,20 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePartnerProgramSettings } from "@/hooks/usePartnerProgramSettings";
-import { 
-  DollarSign, 
-  Users, 
-  Sparkles, 
-  ShieldCheck, 
-  CheckCircle2, 
-  ArrowRight, 
-  RefreshCw, 
-  Loader2, 
-  Percent, 
-  Share2, 
-  Building2, 
-  Smartphone, 
-  CreditCard 
+import {
+  DollarSign,
+  Users,
+  Sparkles,
+  ShieldCheck,
+  CheckCircle2,
+  ArrowRight,
+  RefreshCw,
+  Loader2,
+  Percent,
+  Share2,
+  Building2,
+  Smartphone,
+  CreditCard
 } from "lucide-react";
 
 export default function BecomeReferralPartner() {
@@ -37,7 +37,7 @@ export default function BecomeReferralPartner() {
   const [loading, setLoading] = useState(false);
   const [generatingCode, setGeneratingCode] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     fullName: "",
     phone: "",
@@ -120,7 +120,7 @@ export default function BecomeReferralPartner() {
         description: "Please sign in or create an account to become a referral partner.",
         variant: "destructive",
       });
-      navigate(`/auth?redirect=${encodeURIComponent("/become-referral")}`);
+      navigate(`/auth?redirect=${encodeURIComponent("/Partner")}`);
       return;
     }
 
@@ -396,16 +396,15 @@ export default function BecomeReferralPartner() {
                     <Label className="text-sm font-medium text-slate-700">
                       How would you like to receive your commissions?
                     </Label>
-                    
+
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         type="button"
                         onClick={() => setFormData({ ...formData, payoutMethod: "mtn_momo" })}
-                        className={`p-3.5 rounded-xl border text-center transition-all flex flex-col items-center gap-1.5 ${
-                          formData.payoutMethod === "mtn_momo"
+                        className={`p-3.5 rounded-xl border text-center transition-all flex flex-col items-center gap-1.5 ${formData.payoutMethod === "mtn_momo"
                             ? "border-emerald-500 bg-emerald-50/60 text-emerald-950 font-semibold ring-2 ring-emerald-500/30"
                             : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                        }`}
+                          }`}
                       >
                         <Smartphone className="w-5 h-5 text-emerald-600" />
                         <span className="text-xs sm:text-sm font-medium">Mobile Money</span>
@@ -414,11 +413,10 @@ export default function BecomeReferralPartner() {
                       <button
                         type="button"
                         onClick={() => setFormData({ ...formData, payoutMethod: "bank" })}
-                        className={`p-3.5 rounded-xl border text-center transition-all flex flex-col items-center gap-1.5 ${
-                          formData.payoutMethod === "bank"
+                        className={`p-3.5 rounded-xl border text-center transition-all flex flex-col items-center gap-1.5 ${formData.payoutMethod === "bank"
                             ? "border-blue-500 bg-blue-50/60 text-blue-950 font-semibold ring-2 ring-blue-500/30"
                             : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                        }`}
+                          }`}
                       >
                         <CreditCard className="w-5 h-5 text-blue-600" />
                         <span className="text-xs sm:text-sm font-medium">Bank Transfer</span>

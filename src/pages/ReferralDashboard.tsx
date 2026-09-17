@@ -28,22 +28,22 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { 
-  DollarSign, 
-  TrendingUp, 
-  Users, 
-  Share2, 
-  Copy, 
-  Check, 
-  CheckCircle2, 
-  Clock, 
-  XCircle, 
-  Percent, 
-  Sparkles, 
-  ExternalLink, 
-  Smartphone, 
-  CreditCard, 
-  ArrowUpRight, 
+import {
+  DollarSign,
+  TrendingUp,
+  Users,
+  Share2,
+  Copy,
+  Check,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  Percent,
+  Sparkles,
+  ExternalLink,
+  Smartphone,
+  CreditCard,
+  ArrowUpRight,
   Send,
   HelpCircle,
   QrCode,
@@ -99,7 +99,7 @@ export default function ReferralDashboard() {
   // If user has no referral record and auth is loaded, redirect to signup
   useEffect(() => {
     if (!authLoading && !isAffiliateLoading && user && !affiliate) {
-      navigate("/become-referral", { replace: true });
+      navigate("/Partner", { replace: true });
     }
   }, [user, affiliate, authLoading, isAffiliateLoading, navigate]);
 
@@ -376,9 +376,9 @@ export default function ReferralDashboard() {
                       </div>
                     </div>
 
-                    <Button 
-                      type="submit" 
-                      disabled={requestingPayout || availableToRequest <= 0} 
+                    <Button
+                      type="submit"
+                      disabled={requestingPayout || availableToRequest <= 0}
                       className="w-full bg-rose-500 hover:bg-rose-600 text-white"
                     >
                       {requestingPayout ? "Submitting Request..." : "Confirm Payout Request"}
@@ -417,8 +417,8 @@ export default function ReferralDashboard() {
                 <div className="mt-3">
                   <div className="text-2xl font-bold text-slate-900">{formatNumber(remainingBalance)} RWF</div>
                   <p className="text-xs text-slate-500 mt-1">
-                    {paidEarnings > 0 
-                      ? `${formatNumber(paidEarnings)} RWF paid out` 
+                    {paidEarnings > 0
+                      ? `${formatNumber(paidEarnings)} RWF paid out`
                       : "Available to withdraw"}
                   </p>
                 </div>
@@ -676,10 +676,10 @@ export default function ReferralDashboard() {
                                   p.status === "completed"
                                     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                                     : p.status === "processing"
-                                    ? "bg-blue-50 text-blue-700 border-blue-200"
-                                    : p.status === "failed" || p.status === "cancelled"
-                                    ? "bg-rose-50 text-rose-700 border-rose-200"
-                                    : "bg-amber-50 text-amber-700 border-amber-200"
+                                      ? "bg-blue-50 text-blue-700 border-blue-200"
+                                      : p.status === "failed" || p.status === "cancelled"
+                                        ? "bg-rose-50 text-rose-700 border-rose-200"
+                                        : "bg-amber-50 text-amber-700 border-amber-200"
                                 }
                               >
                                 {p.status ? p.status.toUpperCase() : "PENDING"}

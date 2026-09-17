@@ -298,7 +298,7 @@ const Footer = () => {
                 </Link>
               </li>
               <li>
-                <Link to="/become-referral" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+                <Link to="/Partner" className="text-sm text-muted-foreground hover:text-primary transition-colors">
                   Partner Referral Program ({commissionRate}%)
                 </Link>
               </li>

@@ -751,11 +751,11 @@ const App = () => (
                     <Route path="/refund-policy" element={<RefundPolicy />} />
                     <Route path="/help-center" element={<HelpCenter />} />
                     <Route path="/connection-test" element={<ConnectionTest />} />
-                    <Route path="/become-referral" element={<BecomeReferralPartner />} />
-                    <Route path="/referral-signup" element={<Navigate to="/become-referral" replace />} />
+                    <Route path="/Partner" element={<BecomeReferralPartner />} />
+                    <Route path="/referral-signup" element={<Navigate to="/Partner" replace />} />
                     <Route path="/referral-dashboard" element={<RequireAuth><ReferralDashboard /></RequireAuth>} />
                     <Route path="/referral" element={<RequireAuth><ReferralDashboard /></RequireAuth>} />
-                    <Route path="/affiliate-signup" element={<Navigate to="/become-referral" replace />} />
+                    <Route path="/affiliate-signup" element={<Navigate to="/Partner" replace />} />
                     <Route path="/affiliate-dashboard" element={<Navigate to="/referral-dashboard" replace />} />
                     <Route path="/affiliate" element={<Navigate to="/referral-dashboard" replace />} />
                     <Route path="/access-denied" element={<AccessDenied />} />

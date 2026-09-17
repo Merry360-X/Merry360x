@@ -377,7 +377,7 @@ const Index = () => {
               {/* Referral CTA */}
               <div className="mt-6 md:mt-8 flex justify-center">
                 <Button
-                  onClick={() => navigate('/become-referral')}
+                  onClick={() => navigate('/Partner')}
                   variant="outline"
                   size="lg"
                   className="w-full max-w-[22rem] sm:w-auto bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 hover:text-white transition-all shadow-lg"
