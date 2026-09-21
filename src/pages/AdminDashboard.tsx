@@ -84,8 +84,10 @@ import {
   Phone,
   Wallet,
   Percent,
+  PlusCircle,
 } from "lucide-react";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import AdminAddExternalBookingDialog from "@/components/AdminAddExternalBookingDialog";
 
 interface MetricCardProps {
   label: string;
@@ -810,6 +812,8 @@ export default function AdminDashboard() {
   const [userDataFilter, setUserDataFilter] = useState<"all" | "collected" | "missing">("all");
   const [userDataScope, setUserDataScope] = useState<"all" | "users" | "hosts">("all");
   const [bookingStatus, setBookingStatus] = useState<BookingFilterValue>("all");
+  const [bookingSourceFilter, setBookingSourceFilter] = useState<"all" | "online" | "external">("all");
+  const [addExternalBookingOpen, setAddExternalBookingOpen] = useState(false);
   const [bookingIdSearch, setBookingIdSearch] = useState("");
   const [ticketStatus, setTicketStatus] = useState<"all" | string>("all");
   const [respondingTicket, setRespondingTicket] = useState<SupportTicketRow | null>(null);
@@ -3719,13 +3723,21 @@ For support, contact: support@merry360x.com
         })
       : filteredByStatus;
 
-    if (!query) return filteredByRefundRequest;
-    return filteredByRefundRequest.filter((booking) => {
+    const filteredBySource = bookingSourceFilter === "all"
+      ? filteredByRefundRequest
+      : filteredByRefundRequest.filter((booking) => {
+          const isExternal = booking.booking_source === "external";
+          return bookingSourceFilter === "external" ? isExternal : !isExternal;
+        });
+
+    if (!query) return filteredBySource;
+    return filteredBySource.filter((booking) => {
       const bookingId = String(booking.id || "").toLowerCase();
       const orderId = String(booking.order_id || "").toLowerCase();
-      return bookingId.includes(query) || orderId.includes(query);
+      const extRef = String(booking.external_reference || "").toLowerCase();
+      return bookingId.includes(query) || orderId.includes(query) || extRef.includes(query);
     });
-  }, [bookings, bookingIdSearch, bookingStatus, refundRequestRefs]);
+  }, [bookings, bookingIdSearch, bookingStatus, bookingSourceFilter, refundRequestRefs]);
 
   const updateBookingCalcOverride = useCallback((key: keyof typeof bookingCalcFeeOverrides, rawValue: string) => {
     const parsed = Number(rawValue);
@@ -3843,6 +3855,14 @@ For support, contact: support@merry360x.com
       return refundRequestRefs.has(bookingId) || (orderId && refundRequestRefs.has(orderId));
     }).length,
     [bookings, refundRequestRefs]
+  );
+  const externalBookingsCount = useMemo(
+    () => bookings.filter((booking) => booking.booking_source === "external").length,
+    [bookings]
+  );
+  const onlineBookingsCount = useMemo(
+    () => bookings.filter((booking) => booking.booking_source !== "external").length,
+    [bookings]
   );
 
   const isConfirmedPaidBooking = (booking: BookingRow): boolean => {
@@ -6601,11 +6621,18 @@ For support, contact: support@merry360x.com
                   <p className="text-sm text-muted-foreground">Clear view of booking references, guest details, schedule, and payment tracking</p>
                 </div>
                 <div className="flex items-center gap-2 w-full md:w-auto">
+                  <Button
+                    onClick={() => setAddExternalBookingOpen(true)}
+                    className="bg-purple-600 hover:bg-purple-700 text-white gap-1.5 whitespace-nowrap shadow-sm"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    Add External Booking
+                  </Button>
                   <Button variant="outline" onClick={() => setAdminTab("booking-calculations")}>View Booking Calculations</Button>
                   <Input
                     value={bookingIdSearch}
                     onChange={(e) => setBookingIdSearch(e.target.value)}
-                    placeholder="Search Booking ID / Order ID"
+                    placeholder="Search Booking ID / Order ID / Ref"
                     className="w-full md:w-64"
                   />
                   <Select value={bookingStatus} onValueChange={setBookingStatus}>
@@ -6665,29 +6692,64 @@ For support, contact: support@merry360x.com
                   <p className="text-xs text-muted-foreground">Refund Requested</p>
                   <p className="text-xl font-semibold text-amber-600">{refundRequestedCount}</p>
                 </div>
+                <div className="rounded-lg border p-3 border-purple-200 dark:border-purple-900 bg-purple-50/40 dark:bg-purple-950/20">
+                  <p className="text-xs text-purple-700 dark:text-purple-300 font-medium">External Bookings</p>
+                  <p className="text-xl font-semibold text-purple-700 dark:text-purple-300">{externalBookingsCount}</p>
+                </div>
               </div>
 
-              <div className="mb-4 flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant={bookingStatus === "all" ? "default" : "outline"}
-                  onClick={() => setBookingStatus("all")}
-                >
-                  All Bookings
-                </Button>
-                <Button
-                  size="sm"
-                  variant={bookingStatus === "refund_requested" ? "default" : "outline"}
-                  onClick={() => setBookingStatus("refund_requested")}
-                  className="gap-1"
-                >
-                  Refund Decisions
-                  {refundRequestedCount > 0 && (
-                    <Badge variant="secondary" className="h-5 min-w-[20px] px-1.5 text-xs">
-                      {refundRequestedCount}
-                    </Badge>
-                  )}
-                </Button>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={bookingStatus === "all" ? "default" : "outline"}
+                    onClick={() => setBookingStatus("all")}
+                  >
+                    All Statuses
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={bookingStatus === "refund_requested" ? "default" : "outline"}
+                    onClick={() => setBookingStatus("refund_requested")}
+                    className="gap-1"
+                  >
+                    Refund Decisions
+                    {refundRequestedCount > 0 && (
+                      <Badge variant="secondary" className="h-5 min-w-[20px] px-1.5 text-xs">
+                        {refundRequestedCount}
+                      </Badge>
+                    )}
+                  </Button>
+                </div>
+
+                {/* Source Filter */}
+                <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg border">
+                  <span className="text-xs text-muted-foreground px-2 font-medium">Channel:</span>
+                  <Button
+                    size="sm"
+                    variant={bookingSourceFilter === "all" ? "secondary" : "ghost"}
+                    className="h-7 text-xs px-2.5"
+                    onClick={() => setBookingSourceFilter("all")}
+                  >
+                    All ({bookings.length})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={bookingSourceFilter === "online" ? "secondary" : "ghost"}
+                    className="h-7 text-xs px-2.5"
+                    onClick={() => setBookingSourceFilter("online")}
+                  >
+                    Online ({onlineBookingsCount})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={bookingSourceFilter === "external" ? "secondary" : "ghost"}
+                    className="h-7 text-xs px-2.5 text-purple-700 dark:text-purple-300 font-medium"
+                    onClick={() => setBookingSourceFilter("external")}
+                  >
+                    External ({externalBookingsCount})
+                  </Button>
+                </div>
               </div>
 
               <div className="overflow-x-auto">
@@ -6764,6 +6826,17 @@ For support, contact: support@merry360x.com
                       <TableRow key={b.id}>
                         <TableCell>
                           <div className="space-y-1">
+                            <div className="flex items-center gap-1.5">
+                              {b.booking_source === "external" ? (
+                                <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border-purple-300 text-[10px] h-4 px-1.5 font-bold">
+                                  EXTERNAL
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-[10px] h-4 px-1.5 font-semibold text-muted-foreground">
+                                  ONLINE
+                                </Badge>
+                              )}
+                            </div>
                             <div>
                               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Booking</p>
                               <p className="font-mono text-xs break-all leading-4">{b.id}</p>
@@ -6773,6 +6846,10 @@ For support, contact: support@merry360x.com
                               {b.order_id ? (
                                 <Badge variant="secondary" className="font-mono text-[11px] break-all whitespace-normal leading-4">
                                   {b.order_id}
+                                </Badge>
+                              ) : b.external_reference ? (
+                                <Badge variant="outline" className="font-mono text-[11px] break-all whitespace-normal leading-4 border-purple-200 text-purple-700 dark:text-purple-300">
+                                  Ref: {b.external_reference}
                                 </Badge>
                               ) : (
                                 <span className="text-xs text-muted-foreground">Single booking</span>
@@ -8448,7 +8525,7 @@ For support, contact: support@merry360x.com
                 )}
                 
                 {/* Booking Status & IDs */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="p-3 bg-muted/30 rounded-lg">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Booking Status</p>
                     <div className="mt-1"><StatusBadge status={selectedBooking.status} /></div>
@@ -8457,13 +8534,87 @@ For support, contact: support@merry360x.com
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Payment</p>
                     <div className="mt-1"><PaymentStatusBadge status={selectedBooking.payment_status} /></div>
                   </div>
+                  <div className="p-3 bg-muted/30 rounded-lg">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Booking Channel</p>
+                    <div className="mt-1">
+                      {selectedBooking.booking_source === "external" ? (
+                        <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border-purple-300 text-xs font-semibold">
+                          EXTERNAL BOOKING
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs font-medium">
+                          ONLINE (WEBSITE)
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-muted/30 rounded-lg">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Payment Source</p>
+                    <div className="mt-1">
+                      {selectedBooking.payment_source === "external" ? (
+                        <Badge variant="secondary" className="text-xs font-medium text-purple-700 dark:text-purple-300">
+                          External / Offline
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs font-medium">
+                          Online Gateway
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
                   {selectedBooking.order_id && (
-                    <div className="p-3 bg-muted/30 rounded-lg">
+                    <div className="p-3 bg-muted/30 rounded-lg col-span-2">
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Order ID</p>
-                      <p className="font-mono text-xs mt-1">{selectedBooking.order_id.slice(0, 12)}...</p>
+                      <p className="font-mono text-xs mt-1">{selectedBooking.order_id}</p>
+                    </div>
+                  )}
+                  {selectedBooking.external_reference && (
+                    <div className="p-3 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900 rounded-lg col-span-2">
+                      <p className="text-xs font-medium text-purple-700 dark:text-purple-300 uppercase tracking-wide">External Reference / Slip</p>
+                      <p className="font-mono text-xs font-semibold text-purple-900 dark:text-purple-200 mt-1">{selectedBooking.external_reference}</p>
                     </div>
                   )}
                 </div>
+
+                {/* External Booking Audit Details (if recorded by admin) */}
+                {selectedBooking.booking_source === "external" && (
+                  <div className="border border-purple-200 dark:border-purple-900 bg-purple-50/20 dark:bg-purple-950/10 rounded-lg p-3.5 space-y-2">
+                    <p className="text-xs font-semibold text-purple-800 dark:text-purple-300 flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5" />
+                      External Booking Audit Record
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Payment Date: </span>
+                        <span className="font-medium">
+                          {selectedBooking.payment_date
+                            ? new Date(selectedBooking.payment_date).toLocaleDateString()
+                            : selectedBooking.created_at
+                            ? new Date(selectedBooking.created_at).toLocaleDateString()
+                            : "—"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Recorded By: </span>
+                        <span className="font-medium font-mono">
+                          {selectedBooking.recorded_by?.slice(0, 8) || "Admin"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Recorded At: </span>
+                        <span className="font-medium">
+                          {selectedBooking.created_at ? new Date(selectedBooking.created_at).toLocaleString() : "—"}
+                        </span>
+                      </div>
+                    </div>
+                    {selectedBooking.internal_notes && (
+                      <div className="pt-1.5 border-t border-purple-100 dark:border-purple-900/50">
+                        <span className="text-muted-foreground text-xs font-medium">Internal Notes: </span>
+                        <p className="text-xs mt-0.5 text-foreground">{selectedBooking.internal_notes}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Guest Information */}
                 <div className="border rounded-lg overflow-hidden">
@@ -9197,6 +9348,15 @@ For support, contact: support@merry360x.com
             )}
           </DialogContent>
         </Dialog>
+
+        {/* ADD EXTERNAL BOOKING DIALOG */}
+        <AdminAddExternalBookingDialog
+          open={addExternalBookingOpen}
+          onOpenChange={setAddExternalBookingOpen}
+          onBookingCreated={async () => {
+            await Promise.all([refetchBookings(), refetchMetrics()]);
+          }}
+        />
       </main>
 
       <Footer />

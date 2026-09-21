@@ -530,6 +530,7 @@ export type Database = {
       bookings: {
         Row: {
           affiliate_id: string | null
+          booking_source: string | null
           booking_type: string | null
           check_in: string
           check_out: string
@@ -538,6 +539,7 @@ export type Database = {
           confirmed_by: string | null
           created_at: string | null
           currency: string | null
+          external_reference: string | null
           guest_email: string | null
           guest_id: string | null
           guest_name: string | null
@@ -545,13 +547,17 @@ export type Database = {
           guests: number | null
           host_id: string | null
           id: string
+          internal_notes: string | null
           is_guest_booking: boolean | null
           order_id: string | null
+          payment_date: string | null
           payment_method: string | null
+          payment_source: string | null
           payment_status:
             | Database["public"]["Enums"]["payment_status_enum"]
             | null
           property_id: string | null
+          recorded_by: string | null
           referral_code: string | null
           rejected_at: string | null
           rejection_reason: string | null
@@ -566,6 +572,7 @@ export type Database = {
         }
         Insert: {
           affiliate_id?: string | null
+          booking_source?: string | null
           booking_type?: string | null
           check_in: string
           check_out: string
@@ -574,6 +581,7 @@ export type Database = {
           confirmed_by?: string | null
           created_at?: string | null
           currency?: string | null
+          external_reference?: string | null
           guest_email?: string | null
           guest_id?: string | null
           guest_name?: string | null
@@ -581,13 +589,17 @@ export type Database = {
           guests?: number | null
           host_id?: string | null
           id?: string
+          internal_notes?: string | null
           is_guest_booking?: boolean | null
           order_id?: string | null
+          payment_date?: string | null
           payment_method?: string | null
+          payment_source?: string | null
           payment_status?:
             | Database["public"]["Enums"]["payment_status_enum"]
             | null
           property_id?: string | null
+          recorded_by?: string | null
           referral_code?: string | null
           rejected_at?: string | null
           rejection_reason?: string | null
@@ -602,6 +614,7 @@ export type Database = {
         }
         Update: {
           affiliate_id?: string | null
+          booking_source?: string | null
           booking_type?: string | null
           check_in?: string
           check_out?: string
@@ -610,6 +623,7 @@ export type Database = {
           confirmed_by?: string | null
           created_at?: string | null
           currency?: string | null
+          external_reference?: string | null
           guest_email?: string | null
           guest_id?: string | null
           guest_name?: string | null
@@ -617,13 +631,17 @@ export type Database = {
           guests?: number | null
           host_id?: string | null
           id?: string
+          internal_notes?: string | null
           is_guest_booking?: boolean | null
           order_id?: string | null
+          payment_date?: string | null
           payment_method?: string | null
+          payment_source?: string | null
           payment_status?:
             | Database["public"]["Enums"]["payment_status_enum"]
             | null
           property_id?: string | null
+          recorded_by?: string | null
           referral_code?: string | null
           rejected_at?: string | null
           rejection_reason?: string | null
