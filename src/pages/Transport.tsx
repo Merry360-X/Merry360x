@@ -76,7 +76,7 @@ const Transport = () => {
   const [vehicle, setVehicle] = useState(ALL_VEHICLES_VALUE);
   const [expandedAirportVehicleId, setExpandedAirportVehicleId] = useState<string | null>(null);
   const [airportDirectionFilter, setAirportDirectionFilter] = useState<"from" | "to">("from");
-  const { addToCart: addCartItem } = useTripCart();
+  const { addToCart: addCartItem, guestCart = [] } = useTripCart();
   const { currency: preferredCurrency } = usePreferences();
   const { usdRates } = useFxRates();
   const nearbyLat = searchParams.get("lat");
