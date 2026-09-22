@@ -331,11 +331,68 @@ export default function AdminAddExternalBookingDialog({
         recorded_by: user?.id || null,
       };
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("bookings")
         .insert(insertPayload as never)
         .select("id")
         .single();
+
+      // Graceful fallback if database migration for external booking columns has not been run yet
+      if (
+        error &&
+        (error.code === "PGRST204" ||
+          error.message?.includes("booking_source") ||
+          error.message?.includes("payment_source") ||
+          error.message?.includes("recorded_by") ||
+          error.message?.includes("external_reference") ||
+          error.message?.includes("internal_notes"))
+      ) {
+        console.warn(
+          "Database lacks external booking columns. Retrying insert with standard columns:",
+          error.message
+        );
+
+        const fallbackNotes = [
+          "[EXTERNAL BOOKING - OFFLINE PAYMENT]",
+          `Payment Method: ${paymentMethod}`,
+          `Payment Status: ${paymentStatus}`,
+          externalReference ? `Reference: ${externalReference}` : null,
+          internalNotes ? `Notes: ${internalNotes}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        const fallbackPayload: Record<string, unknown> = {
+          booking_type: serviceType,
+          property_id: serviceType === "property" ? selectedServiceId : null,
+          tour_id: serviceType === "tour" ? selectedServiceId : null,
+          transport_id: serviceType === "transport" ? selectedServiceId : null,
+          host_id: hostId,
+          guest_id: customerMode === "existing" && selectedUser ? selectedUser.user_id : null,
+          is_guest_booking: customerMode === "new" || !selectedUser,
+          guest_name: effectiveGuestName || null,
+          guest_email: effectiveGuestEmail || null,
+          guest_phone: effectiveGuestPhone || null,
+          check_in: checkIn,
+          check_out: checkOut || checkIn,
+          guests: Math.max(1, guests),
+          total_price: parsedPrice,
+          currency: currency.toUpperCase(),
+          payment_method: paymentMethod,
+          payment_status: paymentStatus,
+          status: paymentStatus === "paid" ? "confirmed" : "pending",
+          special_requests: fallbackNotes,
+        };
+
+        const retryResult = await supabase
+          .from("bookings")
+          .insert(fallbackPayload as never)
+          .select("id")
+          .single();
+
+        data = retryResult.data;
+        error = retryResult.error;
+      }
 
       if (error) throw error;
 
@@ -745,6 +802,7 @@ export default function AdminAddExternalBookingDialog({
                     <SelectValue placeholder="Payment Method" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="credit_card">Credit Card</SelectItem>
                     <SelectItem value="bank_transfer">Bank Transfer (Wire)</SelectItem>
                     <SelectItem value="cash">Cash</SelectItem>
                     <SelectItem value="mobile_money">Mobile Money</SelectItem>
