@@ -117,7 +117,7 @@ export default function AdminAddExternalBookingDialog({
   });
 
   // Fetch properties
-  const { data: properties = [] } = useQuery({
+  const { data: properties = [], isLoading: isLoadingProperties } = useQuery({
     queryKey: ["admin-external-properties"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -132,7 +132,7 @@ export default function AdminAddExternalBookingDialog({
   });
 
   // Fetch tour packages
-  const { data: tours = [] } = useQuery({
+  const { data: tours = [], isLoading: isLoadingTours } = useQuery({
     queryKey: ["admin-external-tours"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -147,19 +147,27 @@ export default function AdminAddExternalBookingDialog({
   });
 
   // Fetch transport vehicles
-  const { data: vehicles = [] } = useQuery({
+  const { data: vehicles = [], isLoading: isLoadingVehicles } = useQuery({
     queryKey: ["admin-external-vehicles"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transport_vehicles")
-        .select("id, title, vehicle_type, price_per_day, currency, host_id, is_published")
+        .select("id, title, vehicle_type, car_brand, car_model, provider_name, price_per_day, daily_price, currency, created_by, is_published, service_type")
         .order("title", { ascending: true })
         .limit(200);
-      if (error) throw error;
+      if (error) {
+        console.error("Failed to load transport vehicles:", error);
+        throw error;
+      }
       return data || [];
     },
     enabled: open && serviceType === "transport",
   });
+
+  const isLoadingServices =
+    (serviceType === "property" && isLoadingProperties) ||
+    (serviceType === "tour" && isLoadingTours) ||
+    (serviceType === "transport" && isLoadingVehicles);
 
   // Filtered services
   const filteredServices = useMemo(() => {
@@ -185,7 +193,10 @@ export default function AdminAddExternalBookingDialog({
       (v) =>
         !term ||
         v.title?.toLowerCase().includes(term) ||
-        v.vehicle_type?.toLowerCase().includes(term)
+        v.vehicle_type?.toLowerCase().includes(term) ||
+        (v.car_brand && v.car_brand.toLowerCase().includes(term)) ||
+        (v.car_model && v.car_model.toLowerCase().includes(term)) ||
+        (v.provider_name && v.provider_name.toLowerCase().includes(term))
     );
   }, [serviceType, properties, tours, vehicles, serviceSearchTerm]);
 
@@ -212,8 +223,9 @@ export default function AdminAddExternalBookingDialog({
       const selected = vehicles.find((v) => v.id === id);
       if (selected) {
         if (selected.currency) setCurrency(selected.currency.toUpperCase());
-        if (selected.price_per_day && !totalPrice) {
-          setTotalPrice(String(selected.price_per_day));
+        const vehiclePrice = selected.price_per_day ?? (selected as any).daily_price;
+        if (vehiclePrice && !totalPrice) {
+          setTotalPrice(String(vehiclePrice));
         }
       }
     }
@@ -298,7 +310,7 @@ export default function AdminAddExternalBookingDialog({
       hostId = t?.host_id || null;
     } else if (serviceType === "transport") {
       const v = vehicles.find((item) => item.id === selectedServiceId);
-      hostId = v?.host_id || null;
+      hostId = (v as any)?.created_by || (v as any)?.host_id || null;
     }
 
     setIsSubmitting(true);
@@ -645,9 +657,38 @@ export default function AdminAddExternalBookingDialog({
               </div>
 
               <div className="max-h-48 overflow-y-auto border rounded-md divide-y bg-background">
-                {filteredServices.length > 0 ? (
+                {isLoadingServices ? (
+                  <div className="p-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Loading available {serviceType === "property" ? "accommodations" : serviceType === "tour" ? "tour packages" : "vehicles"}...</span>
+                  </div>
+                ) : filteredServices.length > 0 ? (
                   filteredServices.map((item) => {
                     const isSelected = selectedServiceId === item.id;
+                    const itemTitle =
+                      item.title ||
+                      ("car_brand" in item && (item as any).car_brand
+                        ? `${(item as any).car_brand} ${(item as any).car_model || ""}`.trim()
+                        : "Transport Service");
+                    const itemSubtitle =
+                      "location" in item
+                        ? item.location
+                        : "city" in item
+                        ? `${item.city}, ${item.country}`
+                        : "vehicle_type" in item
+                        ? [(item as any).vehicle_type, (item as any).car_brand, (item as any).car_model, (item as any).provider_name]
+                            .filter(Boolean)
+                            .join(" • ") || "Vehicle"
+                        : "";
+                    const itemPrice =
+                      "price_per_night" in item
+                        ? `${item.price_per_night} ${item.currency || "USD"}/night`
+                        : "price_per_adult" in item
+                        ? `${item.price_per_adult} ${item.currency || "USD"}/person`
+                        : "price_per_day" in item || "daily_price" in item
+                        ? `${(item as any).price_per_day ?? (item as any).daily_price ?? 0} ${(item as any).currency || "USD"}/day`
+                        : "";
+
                     return (
                       <div
                         key={item.id}
@@ -657,26 +698,14 @@ export default function AdminAddExternalBookingDialog({
                         }`}
                       >
                         <div className="min-w-0 flex-1 pr-2">
-                          <p className="font-medium truncate">{item.title}</p>
+                          <p className="font-medium truncate">{itemTitle}</p>
                           <p className="text-xs text-muted-foreground truncate">
-                            {"location" in item
-                              ? item.location
-                              : "city" in item
-                              ? `${item.city}, ${item.country}`
-                              : "vehicle_type" in item
-                              ? item.vehicle_type
-                              : ""}
+                            {itemSubtitle}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="text-xs font-semibold">
-                            {"price_per_night" in item
-                              ? `${item.price_per_night} ${item.currency || "USD"}`
-                              : "price_per_adult" in item
-                              ? `${item.price_per_adult} ${item.currency || "USD"}`
-                              : "price_per_day" in item
-                              ? `${item.price_per_day} ${item.currency || "USD"}`
-                              : ""}
+                            {itemPrice}
                           </span>
                           {isSelected && <CheckCircle2 className="w-4 h-4 text-primary" />}
                         </div>
