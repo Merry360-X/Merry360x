@@ -305,15 +305,83 @@ async function listOwnedBookingsForHost({ adminClient, hostId, select }) {
     .slice(0, 500);
 }
 
-async function getBookingOrThrow(adminClient, bookingId) {
-  const { data: booking, error } = await adminClient
-    .from("bookings")
-    .select("id, guest_id, guest_email, guest_name, host_id, property_id, tour_id, transport_id, check_in, check_out, total_price, currency, booking_type")
-    .eq("id", bookingId)
-    .single();
+async function resolvePropertyId(adminClient, propertyIdentifier) {
+  if (!propertyIdentifier) return null;
+  const raw = safeStr(propertyIdentifier, 120);
+  if (!raw) return null;
 
-  if (error || !booking) {
-    throw Object.assign(new Error("Booking not found"), { status: 404 });
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw);
+  if (isUuid) {
+    const { data } = await adminClient
+      .from("properties")
+      .select("id, title, price_per_night, currency")
+      .eq("id", raw)
+      .maybeSingle();
+    if (data?.id) return data.id;
+  }
+
+  const { data: bySlug } = await adminClient
+    .from("properties")
+    .select("id, title, price_per_night, currency")
+    .eq("slug", raw)
+    .maybeSingle();
+  if (bySlug?.id) return bySlug.id;
+
+  const { data: byTitle } = await adminClient
+    .from("properties")
+    .select("id, title, price_per_night, currency")
+    .ilike("title", `%${raw}%`)
+    .limit(1);
+  if (byTitle && byTitle.length > 0) {
+    return byTitle[0].id;
+  }
+
+  if (!isUuid) {
+    throw Object.assign(
+      new Error(`Property "${raw}" could not be found. Please select a valid property or enter a valid Property UUID.`),
+      { status: 400 }
+    );
+  }
+
+  return raw;
+}
+
+async function getBookingOrThrow(adminClient, bookingId) {
+  const rawId = safeStr(bookingId, 80);
+  if (!rawId) {
+    throw Object.assign(new Error("Booking ID or Order ID is required"), { status: 400 });
+  }
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId);
+  let booking = null;
+
+  if (isUuid) {
+    const { data } = await adminClient
+      .from("bookings")
+      .select("id, guest_id, guest_email, guest_name, host_id, property_id, tour_id, transport_id, check_in, check_out, total_price, currency, booking_type, order_id")
+      .eq("id", rawId)
+      .maybeSingle();
+    booking = data;
+  }
+
+  if (!booking) {
+    const { data: byOrder } = await adminClient
+      .from("bookings")
+      .select("id, guest_id, guest_email, guest_name, host_id, property_id, tour_id, transport_id, check_in, check_out, total_price, currency, booking_type, order_id")
+      .or(`order_id.eq.${rawId},external_reference.eq.${rawId}`)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (byOrder && byOrder.length > 0) {
+      booking = byOrder[0];
+    }
+  }
+
+  if (!booking) {
+    throw Object.assign(
+      new Error(`Booking not found for ID "${rawId}". Please verify the Booking ID or Order ID.`),
+      { status: 404 }
+    );
   }
 
   return attachResolvedBookingHost(adminClient, booking);
@@ -1245,11 +1313,20 @@ async function createModification({ auth, body }) {
 
   const booking = await getBookingOrThrow(auth.adminClient, bookingId);
 
+  let resolvedNewPropertyId = null;
+  if (newPropertyId) {
+    resolvedNewPropertyId = await resolvePropertyId(auth.adminClient, newPropertyId);
+  }
+
+  if ((type === "property_change" || type === "alternative_offer") && !resolvedNewPropertyId && !newPropertyId) {
+    // If it's a property change, a new property should ideally be specified
+  }
+
   const { data: calcRows, error: calcErr } = await auth.adminClient.rpc("calculate_booking_modification_difference", {
     p_booking_id: booking.id,
     p_new_check_in: newCheckIn,
     p_new_check_out: newCheckOut,
-    p_new_property_id: newPropertyId,
+    p_new_property_id: resolvedNewPropertyId,
   });
 
   if (calcErr || !Array.isArray(calcRows) || calcRows.length === 0) {
@@ -1269,7 +1346,7 @@ async function createModification({ auth, body }) {
     admin_id: auth.userId,
     modification_type: type,
     old_property_id: oldPropertyId || booking.property_id || null,
-    new_property_id: newPropertyId || null,
+    new_property_id: resolvedNewPropertyId || null,
     old_check_in: booking.check_in,
     old_check_out: booking.check_out,
     new_check_in: newCheckIn,

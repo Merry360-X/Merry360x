@@ -168,6 +168,19 @@ export default function AdminPostBooking() {
   const [statusDrafts, setStatusDrafts] = useState<Record<string, string>>({});
   const [adjustChargeDrafts, setAdjustChargeDrafts] = useState<Record<string, { amount: string; description: string }>>({});
 
+  const [propertiesList, setPropertiesList] = useState<Array<{ id: string; title: string; price_per_night: number; currency: string; location?: string | null }>>([]);
+  const [resolvedBooking, setResolvedBooking] = useState<{
+    id: string;
+    guest_name: string | null;
+    guest_email: string | null;
+    property_title?: string | null;
+    check_in: string;
+    check_out: string;
+    total_price: number;
+    currency: string;
+  } | null>(null);
+  const [resolvingBooking, setResolvingBooking] = useState(false);
+
   const [resolveDialog, setResolveDialog] = useState<ResolveDialogState>({
     open: false,
     disputeId: null,
@@ -188,8 +201,14 @@ export default function AdminPostBooking() {
     setRefreshing(true);
 
     try {
-      const data = await fetchAdminOverview();
+      const [data, propRes] = await Promise.all([
+        fetchAdminOverview(),
+        supabase.from("properties").select("id, title, price_per_night, currency, location").order("title").limit(500),
+      ]);
       setOverview(data);
+      if (propRes.data) {
+        setPropertiesList(propRes.data as any);
+      }
     } catch (error) {
       toast({
         variant: "destructive",
@@ -201,6 +220,75 @@ export default function AdminPostBooking() {
       setRefreshing(false);
     }
   }, [toast, user]);
+
+  // Live lookup of booking when booking_id changes
+  useEffect(() => {
+    const rawId = modificationForm.booking_id.trim();
+    if (!rawId || rawId.length < 8) {
+      setResolvedBooking(null);
+      return;
+    }
+
+    let isMounted = true;
+    setResolvingBooking(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId);
+        let bookingRow: any = null;
+
+        if (isUuid) {
+          const { data } = await supabase
+            .from("bookings")
+            .select("id, guest_name, guest_email, property_id, check_in, check_out, total_price, currency, order_id")
+            .eq("id", rawId)
+            .maybeSingle();
+          bookingRow = data;
+        }
+
+        if (!bookingRow) {
+          const { data } = await supabase
+            .from("bookings")
+            .select("id, guest_name, guest_email, property_id, check_in, check_out, total_price, currency, order_id")
+            .or(`order_id.eq.${rawId},external_reference.eq.${rawId}`)
+            .order("created_at", { ascending: false })
+            .limit(1);
+          if (data && data.length > 0) {
+            bookingRow = data[0];
+          }
+        }
+
+        if (isMounted && bookingRow) {
+          let propTitle = null;
+          if (bookingRow.property_id) {
+            const { data: prop } = await supabase.from("properties").select("title").eq("id", bookingRow.property_id).maybeSingle();
+            propTitle = prop?.title || null;
+          }
+          setResolvedBooking({
+            id: bookingRow.id,
+            guest_name: bookingRow.guest_name,
+            guest_email: bookingRow.guest_email,
+            property_title: propTitle,
+            check_in: bookingRow.check_in,
+            check_out: bookingRow.check_out,
+            total_price: bookingRow.total_price,
+            currency: bookingRow.currency || "USD",
+          });
+        } else if (isMounted) {
+          setResolvedBooking(null);
+        }
+      } catch {
+        if (isMounted) setResolvedBooking(null);
+      } finally {
+        if (isMounted) setResolvingBooking(false);
+      }
+    }, 400);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [modificationForm.booking_id]);
 
   useEffect(() => {
     if (!user) {
@@ -256,25 +344,49 @@ export default function AdminPostBooking() {
   }
 
   async function createModification(forceAlternative = false) {
-    if (!modificationForm.booking_id.trim()) {
+    const rawBookingId = modificationForm.booking_id.trim();
+    if (!rawBookingId) {
       toast({
         variant: "destructive",
         title: "Missing booking ID",
-        description: "Booking ID is required.",
+        description: "Booking ID or Order ID is required.",
       });
       return;
+    }
+
+    const modType = forceAlternative ? "alternative_offer" : modificationForm.modification_type;
+    const newProp = modificationForm.new_property_id.trim();
+
+    if ((modType === "property_change" || modType === "alternative_offer") && !newProp) {
+      toast({
+        variant: "destructive",
+        title: "Missing target property",
+        description: "Please select or provide the new property to switch to.",
+      });
+      return;
+    }
+
+    if (modificationForm.new_check_in && modificationForm.new_check_out) {
+      if (new Date(modificationForm.new_check_in) >= new Date(modificationForm.new_check_out)) {
+        toast({
+          variant: "destructive",
+          title: "Invalid dates",
+          description: "New check-out date must be after new check-in date.",
+        });
+        return;
+      }
     }
 
     setCreatingModification(true);
     try {
       const payload = {
-        booking_id: modificationForm.booking_id.trim(),
-        modification_type: forceAlternative ? "alternative_offer" : modificationForm.modification_type,
+        booking_id: rawBookingId,
+        modification_type: modType,
         new_check_in: modificationForm.new_check_in || null,
         new_check_out: modificationForm.new_check_out || null,
-        new_property_id: modificationForm.new_property_id || null,
-        reason: modificationForm.reason || null,
-        proposal_message: modificationForm.proposal_message || null,
+        new_property_id: newProp || null,
+        reason: modificationForm.reason.trim() || null,
+        proposal_message: modificationForm.proposal_message.trim() || null,
       };
 
       await postBookingRequest(forceAlternative ? "propose-alternative" : "create-modification", payload);
@@ -283,6 +395,18 @@ export default function AdminPostBooking() {
         title: forceAlternative ? "Alternative proposed" : "Modification created",
         description: "Guest was notified and can accept/reject the change.",
       });
+
+      // Reset form
+      setModificationForm({
+        booking_id: "",
+        modification_type: "date_change",
+        new_check_in: "",
+        new_check_out: "",
+        new_property_id: "",
+        reason: "",
+        proposal_message: "",
+      });
+      setResolvedBooking(null);
 
       await loadOverview(false);
     } catch (error) {
@@ -612,28 +736,49 @@ export default function AdminPostBooking() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Booking ID</Label>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label className="flex items-center justify-between">
+                      <span>Booking ID or Order ID *</span>
+                      {resolvingBooking && <span className="text-xs text-muted-foreground animate-pulse">Checking ID...</span>}
+                    </Label>
                     <Input
                       value={modificationForm.booking_id}
                       onChange={(event) => setModificationForm((prev) => ({ ...prev, booking_id: event.target.value }))}
-                      placeholder="Booking UUID"
+                      placeholder="e.g. Booking UUID (c3fa2efa...) or Order ID (4d52707c...)"
                     />
+                    {resolvedBooking ? (
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900 space-y-1">
+                        <p className="font-semibold flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
+                          Found Reservation: {resolvedBooking.guest_name || resolvedBooking.guest_email || "Guest"}
+                        </p>
+                        <p className="text-emerald-700">
+                          {resolvedBooking.property_title ? `Property: ${resolvedBooking.property_title} · ` : ""}
+                          Dates: {resolvedBooking.check_in} to {resolvedBooking.check_out} · Total: {formatMoney(resolvedBooking.total_price, resolvedBooking.currency)}
+                        </p>
+                      </div>
+                    ) : modificationForm.booking_id.trim().length >= 8 && !resolvingBooking ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        Tip: You can paste either the <strong>Booking UUID</strong> or the <strong>Order UUID</strong> from the admin dashboard.
+                      </p>
+                    ) : null}
                   </div>
-                  <div className="space-y-2">
+
+                  <div className="space-y-2 md:col-span-2">
                     <Label>Modification Type</Label>
                     <select
                       value={modificationForm.modification_type}
                       onChange={(event) => setModificationForm((prev) => ({ ...prev, modification_type: event.target.value }))}
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm font-medium"
                     >
-                      <option value="date_change">Date change</option>
-                      <option value="property_change">Property change</option>
-                      <option value="alternative_offer">Alternative offer</option>
+                      <option value="property_change">Property change (switch to a different property)</option>
+                      <option value="date_change">Date change (stay at same property, change check-in / check-out)</option>
+                      <option value="alternative_offer">Alternative offer (propose substitute property)</option>
                     </select>
                   </div>
+
                   <div className="space-y-2">
-                    <Label>New check-in (optional)</Label>
+                    <Label>New check-in {modificationForm.modification_type === "date_change" ? "*" : "(optional)"}</Label>
                     <Input
                       type="date"
                       value={modificationForm.new_check_in}
@@ -641,7 +786,7 @@ export default function AdminPostBooking() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>New check-out (optional)</Label>
+                    <Label>New check-out {modificationForm.modification_type === "date_change" ? "*" : "(optional)"}</Label>
                     <Input
                       type="date"
                       value={modificationForm.new_check_out}
@@ -651,12 +796,33 @@ export default function AdminPostBooking() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>New property ID (optional)</Label>
+                  <Label className="flex items-center justify-between">
+                    <span>
+                      Target New Property {modificationForm.modification_type === "property_change" ? "(Required for Property Change)" : "(Optional)"}
+                    </span>
+                  </Label>
+                  {propertiesList.length > 0 && (
+                    <select
+                      value={modificationForm.new_property_id}
+                      onChange={(event) => setModificationForm((prev) => ({ ...prev, new_property_id: event.target.value }))}
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm mb-2"
+                    >
+                      <option value="">-- Select target property from list --</option>
+                      {propertiesList.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.title} ({p.location || "Rwanda"}) — {p.price_per_night ? formatMoney(p.price_per_night, p.currency || "USD") + "/night" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <Input
                     value={modificationForm.new_property_id}
                     onChange={(event) => setModificationForm((prev) => ({ ...prev, new_property_id: event.target.value }))}
-                    placeholder="Property UUID for upgrades/alternatives"
+                    placeholder="Or enter Property ID / Slug directly (e.g. 0a28e78b...)"
                   />
+                  <p className="text-[11px] text-muted-foreground">
+                    Select the new property the guest wants to move to so price differences can be recalculated automatically.
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -664,22 +830,22 @@ export default function AdminPostBooking() {
                   <Input
                     value={modificationForm.reason}
                     onChange={(event) => setModificationForm((prev) => ({ ...prev, reason: event.target.value }))}
-                    placeholder="Operational reason"
+                    placeholder="e.g. Guest requested property change / Host upgrade"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Proposal message</Label>
+                  <Label>Proposal message for guest</Label>
                   <Textarea
                     value={modificationForm.proposal_message}
                     onChange={(event) => setModificationForm((prev) => ({ ...prev, proposal_message: event.target.value }))}
                     rows={3}
-                    placeholder="Explain why this modification is proposed"
+                    placeholder="e.g. We have prepared your property change request. Please review the updated details and confirm."
                   />
                 </div>
 
-                <Button onClick={() => void createModification(false)} disabled={creatingModification}>
-                  {creatingModification ? "Creating..." : "Create modification"}
+                <Button onClick={() => void createModification(false)} disabled={creatingModification} className="w-full sm:w-auto">
+                  {creatingModification ? "Calculating & Creating..." : "Create Modification Request"}
                 </Button>
               </CardContent>
             </Card>
@@ -723,15 +889,15 @@ export default function AdminPostBooking() {
                   Suggest Alternative Property
                 </CardTitle>
                 <CardDescription>
-                  If a listing is unavailable, propose another property and let the system compute difference automatically.
+                  If a listing is unavailable, propose another property and let the system compute price difference automatically.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  This uses the same engine as booking modification and sends a user proposal in one action.
+                  Fill in the booking ID and select the target substitute property in the <strong>Modify Booking</strong> tab, or trigger it directly:
                 </p>
                 <Button onClick={() => void createModification(true)} disabled={creatingModification}>
-                  {creatingModification ? "Sending..." : "Send alternative offer"}
+                  {creatingModification ? "Sending..." : "Send alternative offer using current form values"}
                 </Button>
               </CardContent>
             </Card>
