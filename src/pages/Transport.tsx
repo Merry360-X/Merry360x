@@ -1,4 +1,4 @@
-import { Car, Search, MapPin, Frown, ArrowLeftRight, Plane, Building2, Map as MapIcon, Key, Users, Fuel, Settings, Calendar, Shield, ChevronRight } from "lucide-react";
+import { Car, Search, MapPin, Frown, ArrowLeftRight, Plane, Building2, Map as MapIcon, Key, Users, Fuel, Settings, Calendar, Shield, ChevronRight, Clock, Sparkles, CheckCircle2, Navigation } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -65,6 +65,75 @@ interface TransportVehicleRow {
 
 type TransportRouteRow = Pick<Tables<"transport_routes">, "id" | "from_location" | "to_location" | "base_price" | "currency">;
 
+const getRouteMeta = (from: string, to: string) => {
+  const combined = `${from || ""} ${to || ""}`.toLowerCase();
+  if (combined.includes("gisenyi") || combined.includes("rubavu")) {
+    return {
+      duration: "~3.5 hrs",
+      distance: "155 km",
+      highlight: "Lake Kivu Beach, Waterfront & Border",
+      tag: "Scenic Route",
+    };
+  }
+  if (combined.includes("musanze") || combined.includes("ruhengeri")) {
+    return {
+      duration: "~2 hrs",
+      distance: "95 km",
+      highlight: "Volcanoes National Park & Gorilla Trekking",
+      tag: "Volcanoes Route",
+    };
+  }
+  if (combined.includes("karongi") || combined.includes("kibuye")) {
+    return {
+      duration: "~3 hrs",
+      distance: "135 km",
+      highlight: "Lake Kivu Islands, Boat Tours & Tea Plantations",
+      tag: "Lakeside Route",
+    };
+  }
+  if (combined.includes("huye") || combined.includes("butare")) {
+    return {
+      duration: "~2.5 hrs",
+      distance: "130 km",
+      highlight: "Ethnographic Museum & Cultural Heritage",
+      tag: "Heritage Route",
+    };
+  }
+  if (combined.includes("akagera")) {
+    return {
+      duration: "~2.5 hrs",
+      distance: "110 km",
+      highlight: "Akagera Safari & Big 5 Wildlife Gateway",
+      tag: "Safari Route",
+    };
+  }
+  if (combined.includes("rusizi") || combined.includes("nyungwe") || combined.includes("cyangugu")) {
+    return {
+      duration: "~5.5 hrs",
+      distance: "240 km",
+      highlight: "Nyungwe Forest Canopy Walk & Primates",
+      tag: "Rainforest Route",
+    };
+  }
+  return {
+    duration: "Direct",
+    distance: "Intercity",
+    highlight: "Door-to-door private transport",
+    tag: "Private Ride",
+  };
+};
+
+const DEFAULT_INTERCITY_ROUTES: TransportRouteRow[] = [
+  { id: "preset-kigali-gisenyi", from_location: "Kigali", to_location: "Gisenyi (Rubavu)", base_price: 60000, currency: "RWF" },
+  { id: "preset-gisenyi-kigali", from_location: "Gisenyi (Rubavu)", to_location: "Kigali", base_price: 60000, currency: "RWF" },
+  { id: "preset-kigali-musanze", from_location: "Kigali", to_location: "Musanze (Ruhengeri)", base_price: 50000, currency: "RWF" },
+  { id: "preset-musanze-kigali", from_location: "Musanze (Ruhengeri)", to_location: "Kigali", base_price: 50000, currency: "RWF" },
+  { id: "preset-kigali-karongi", from_location: "Kigali", to_location: "Karongi (Kibuye)", base_price: 55000, currency: "RWF" },
+  { id: "preset-kigali-huye", from_location: "Kigali", to_location: "Huye (Butare)", base_price: 50000, currency: "RWF" },
+  { id: "preset-kigali-akagera", from_location: "Kigali", to_location: "Akagera National Park", base_price: 75000, currency: "RWF" },
+  { id: "preset-musanze-gisenyi", from_location: "Musanze (Ruhengeri)", to_location: "Gisenyi (Rubavu)", base_price: 35000, currency: "RWF" },
+];
+
 const Transport = () => {
   const { t } = useTranslation();
   const { toast } = useToast();
@@ -76,6 +145,8 @@ const Transport = () => {
   const [vehicle, setVehicle] = useState(ALL_VEHICLES_VALUE);
   const [expandedAirportVehicleId, setExpandedAirportVehicleId] = useState<string | null>(null);
   const [airportDirectionFilter, setAirportDirectionFilter] = useState<"from" | "to">("from");
+  const [intercityDestinationFilter, setIntercityDestinationFilter] = useState<string>("all");
+  const [bookingRouteId, setBookingRouteId] = useState<string | null>(null);
   const { addToCart: addCartItem, guestCart = [] } = useTripCart();
   const { currency: preferredCurrency } = usePreferences();
   const { usdRates } = useFxRates();
@@ -467,6 +538,31 @@ const Transport = () => {
     return source.map((item) => item.route);
   }, [routes, scoreRoute, strictLocationMode]);
 
+  const displayIntercityRoutes = useMemo(() => {
+    const source = intercityRoutes.length > 0 ? intercityRoutes : DEFAULT_INTERCITY_ROUTES;
+    if (intercityDestinationFilter === "all") return source;
+
+    return source.filter((r) => {
+      const combined = `${r.from_location} ${r.to_location}`.toLowerCase();
+      if (intercityDestinationFilter === "gisenyi") {
+        return combined.includes("gisenyi") || combined.includes("rubavu");
+      }
+      if (intercityDestinationFilter === "musanze") {
+        return combined.includes("musanze") || combined.includes("ruhengeri");
+      }
+      if (intercityDestinationFilter === "karongi") {
+        return combined.includes("karongi") || combined.includes("kibuye");
+      }
+      if (intercityDestinationFilter === "huye") {
+        return combined.includes("huye") || combined.includes("butare");
+      }
+      if (intercityDestinationFilter === "akagera") {
+        return combined.includes("akagera");
+      }
+      return true;
+    });
+  }, [intercityRoutes, intercityDestinationFilter]);
+
   const filteredServices = useMemo(() => {
     const scored = services
       .map((service) => ({
@@ -520,6 +616,55 @@ const Transport = () => {
     if (!ok) return;
 
     toast({ title: t("common.addedToCart") });
+  };
+
+  const handleBookIntercityRoute = async (r: TransportRouteRow) => {
+    try {
+      setBookingRouteId(r.id);
+      let targetId = r.id;
+
+      // If this is a fallback client preset id, ensure a matching route exists in DB
+      if (r.id.startsWith("preset-")) {
+        const fromKeyword = r.from_location.split(" ")[0];
+        const toKeyword = r.to_location.split(" ")[0];
+
+        const { data: existing } = await supabase
+          .from("transport_routes")
+          .select("id")
+          .ilike("from_location", `%${fromKeyword}%`)
+          .ilike("to_location", `%${toKeyword}%`)
+          .limit(1)
+          .maybeSingle();
+
+        if (existing?.id) {
+          targetId = existing.id;
+        } else {
+          // Create route so checkout can reference it
+          const { data: created, error: createErr } = await supabase
+            .from("transport_routes")
+            .insert({
+              from_location: r.from_location,
+              to_location: r.to_location,
+              base_price: Number(r.base_price || 60000),
+              currency: r.currency || "RWF",
+              is_published: true,
+            })
+            .select("id")
+            .single();
+
+          if (!createErr && created?.id) {
+            targetId = created.id;
+          }
+        }
+      }
+
+      await addToCart({ item_type: "transport_route", reference_id: targetId });
+    } catch (err) {
+      console.error("Error booking intercity route:", err);
+      await addToCart({ item_type: "transport_route", reference_id: r.id });
+    } finally {
+      setBookingRouteId(null);
+    }
   };
 
   return (
@@ -792,36 +937,132 @@ const Transport = () => {
 
           {/* Intercity Rides */}
           {(activeCategory === "all" || activeCategory === "intercity") && (
-            <div className="container mx-auto px-4 lg:px-8 pb-12">
-              <h2 className="text-2xl font-bold text-foreground mb-6 flex items-center gap-3">
-                <MapIcon className="w-6 h-6 text-primary" />
-                Intercity Rides
-              </h2>
-              {intercityRoutes.length === 0 ? (
-                <div className="bg-card rounded-xl p-8 shadow-card text-center">
+            <div className="container mx-auto px-4 lg:px-8 pb-16">
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+                <div>
+                  <div className="flex items-center gap-2 text-primary font-medium text-sm mb-1">
+                    <Navigation className="w-4 h-4" />
+                    <span>City-to-City Private Transfers</span>
+                  </div>
+                  <h2 className="text-2xl lg:text-3xl font-bold text-foreground flex items-center gap-3">
+                    <MapIcon className="w-7 h-7 text-primary" />
+                    Intercity Rides in Rwanda
+                  </h2>
+                  <p className="text-muted-foreground mt-1 max-w-xl text-sm">
+                    Comfortable, private door-to-door rides across Rwanda. Travel seamlessly between Kigali, Gisenyi (Lake Kivu), Musanze (Volcanoes), Karongi, and beyond.
+                  </p>
+                </div>
+
+                {/* Quick filter destination chips */}
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: "all", label: "All Routes" },
+                    { id: "gisenyi", label: "Kigali ⇄ Gisenyi / Rubavu" },
+                    { id: "musanze", label: "Kigali ⇄ Musanze" },
+                    { id: "karongi", label: "Kigali ⇄ Karongi" },
+                    { id: "huye", label: "Kigali ⇄ Huye" },
+                  ].map((chip) => (
+                    <button
+                      key={chip.id}
+                      onClick={() => setIntercityDestinationFilter(chip.id)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                        intercityDestinationFilter === chip.id
+                          ? "bg-primary text-primary-foreground shadow-sm font-semibold"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                      }`}
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {displayIntercityRoutes.length === 0 ? (
+                <div className="bg-card rounded-2xl p-10 shadow-card text-center border">
                   <MapIcon className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-muted-foreground">No intercity routes available yet</p>
+                  <p className="text-base font-semibold text-foreground">No routes found for this filter</p>
+                  <p className="text-sm text-muted-foreground mt-1">Try switching to "All Routes" to view all available journeys.</p>
+                  <Button variant="outline" className="mt-4" onClick={() => setIntercityDestinationFilter("all")}>
+                    Show All Routes
+                  </Button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {intercityRoutes.map((r) => (
-                    <div key={r.id} className="bg-card rounded-xl shadow-card p-6">
-                      <div className="flex items-center gap-2 text-foreground font-semibold mb-2">
-                        <ArrowLeftRight className="w-4 h-4 text-primary" />
-                        {r.from_location} → {r.to_location}
-                      </div>
-                      <div className="text-muted-foreground mb-4">
-                        {displayMoney(Number(r.base_price), String(r.currency ?? "RWF"))}
-                      </div>
-                      <Button
-                        className="w-full"
-                        variant="outline"
-                        onClick={() => addToCart({ item_type: "transport_route", reference_id: r.id })}
+                  {displayIntercityRoutes.map((r) => {
+                    const meta = getRouteMeta(r.from_location, r.to_location);
+                    const isBooking = bookingRouteId === r.id;
+
+                    return (
+                      <div
+                        key={r.id}
+                        className="group bg-card rounded-2xl border border-border/80 shadow-card hover:shadow-md transition-all duration-200 p-6 flex flex-col justify-between hover:border-primary/40 relative overflow-hidden"
                       >
-                        Book Ride
-                      </Button>
-                    </div>
-                  ))}
+                        <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-primary/20 via-primary to-primary/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-3">
+                            <Badge variant="secondary" className="text-[11px] font-medium bg-primary/10 text-primary border-0">
+                              {meta.tag}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
+                              <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                              {meta.duration} • {meta.distance}
+                            </span>
+                          </div>
+
+                          <div className="flex items-start gap-3 my-3">
+                            <div className="p-2.5 rounded-xl bg-primary/10 text-primary shrink-0 mt-0.5">
+                              <ArrowLeftRight className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <div className="text-base font-bold text-foreground leading-snug">
+                                {r.from_location} <span className="text-primary font-normal">→</span> {r.to_location}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                                {meta.highlight}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground my-4 bg-muted/40 p-2.5 rounded-lg">
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                              <span>Door-to-door pickup</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                              <span>Private A/C vehicle</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                              <span>Luggage space</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                              <span>Professional driver</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-3 border-t flex items-center justify-between gap-4 mt-2">
+                          <div>
+                            <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">One-way private ride</div>
+                            <div className="text-lg font-bold text-foreground">
+                              {displayMoney(Number(r.base_price), String(r.currency ?? "RWF"))}
+                            </div>
+                          </div>
+
+                          <Button
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm font-semibold text-xs px-4"
+                            onClick={() => handleBookIntercityRoute(r)}
+                            disabled={isBooking}
+                          >
+                            {isBooking ? "Booking..." : "Book Ride"}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

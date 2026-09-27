@@ -3,6 +3,7 @@ import { usePreferences } from "@/hooks/usePreferences";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { AffiliatesManagement } from "@/components/AffiliatesManagement";
+import { AdminTransportManagement } from "@/components/AdminTransportManagement";
 import { SupportChat } from "@/components/SupportChat";
 import { TicketActivityLogs } from "@/components/TicketActivityLogs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -2809,6 +2810,10 @@ export default function AdminDashboard() {
       if (table === "properties") await refetchProperties();
       if (table === "tours") await refetchTours();
       if (table === "transport_vehicles") await refetchVehicles();
+      if (table === "transport_routes") {
+        queryClient.invalidateQueries({ queryKey: ["admin-transport-routes"] });
+        queryClient.invalidateQueries({ queryKey: ["transport_routes"] });
+      }
       await refetchMetrics();
     } catch (e) {
       logError("admin.togglePublished", e);
@@ -6547,69 +6552,13 @@ For support, contact: support@merry360x.com
 
           {/* TRANSPORT TAB */}
           <TabsContent value="transport">
-            <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Transport Management</h2>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader className="sticky top-0 z-10 bg-background">
-                    <TableRow>
-                      <TableHead className="w-16">Image</TableHead>
-                      <TableHead>Vehicle</TableHead>
-                      <TableHead>Provider</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Price/Day</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {vehicles.map((v) => (
-                      <TableRow key={v.id}>
-                        <TableCell>
-                          <Thumb src={v.media?.[0] || v.image_url} alt={v.title} />
-                        </TableCell>
-                        <TableCell className="font-medium">{v.title}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{v.provider_name || "—"}</TableCell>
-                        <TableCell>{v.vehicle_type}</TableCell>
-                        <TableCell>{formatMoney(v.price_per_day ?? 0, v.currency ?? "RWF")}</TableCell>
-                        <TableCell>
-                          {v.is_published ? (
-                            <Badge className="bg-green-100 text-green-800">Live</Badge>
-                          ) : (
-                            <Badge variant="outline">Draft</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => togglePublished("transport_vehicles", v.id, !v.is_published)}
-                            >
-                              {v.is_published ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => deleteItem("transport_vehicles", v.id)}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {vehicles.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                          No vehicles found
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </Card>
+            <AdminTransportManagement
+              vehicles={vehicles}
+              onTogglePublished={togglePublished}
+              onDeleteItem={deleteItem}
+              refetchVehicles={refetchVehicles}
+              userId={user?.id}
+            />
           </TabsContent>
 
           {/* BOOKINGS TAB */}
