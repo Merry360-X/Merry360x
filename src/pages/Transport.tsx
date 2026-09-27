@@ -18,6 +18,7 @@ import { usePreferences } from "@/hooks/usePreferences";
 import { useFxRates } from "@/hooks/useFxRates";
 import { convertAmount } from "@/lib/fx";
 import { Badge } from "@/components/ui/badge";
+import { calculateRouteDetails } from "@/lib/route-calculator";
 
 // Transport service categories
 const transportCategories = [
@@ -65,61 +66,40 @@ interface TransportVehicleRow {
 
 type TransportRouteRow = Pick<Tables<"transport_routes">, "id" | "from_location" | "to_location" | "base_price" | "currency">;
 
-const getRouteMeta = (from: string, to: string) => {
+const getRouteMeta = (from: string, to: string, distanceKm?: number | null) => {
+  const details = calculateRouteDetails(from, to, distanceKm);
   const combined = `${from || ""} ${to || ""}`.toLowerCase();
+  
+  let tag = "Private Ride";
+  let highlight = "Door-to-door private transfer";
+
   if (combined.includes("gisenyi") || combined.includes("rubavu")) {
-    return {
-      duration: "~3.5 hrs",
-      distance: "155 km",
-      highlight: "Lake Kivu Beach, Waterfront & Border",
-      tag: "Scenic Route",
-    };
+    tag = "Scenic Route";
+    highlight = "Lake Kivu Beach, Waterfront & Border";
+  } else if (combined.includes("musanze") || combined.includes("ruhengeri")) {
+    tag = "Volcanoes Route";
+    highlight = "Volcanoes National Park & Gorilla Trekking";
+  } else if (combined.includes("karongi") || combined.includes("kibuye")) {
+    tag = "Lakeside Route";
+    highlight = "Lake Kivu Islands, Boat Tours & Tea Plantations";
+  } else if (combined.includes("huye") || combined.includes("butare")) {
+    tag = "Heritage Route";
+    highlight = "Ethnographic Museum & Cultural Heritage";
+  } else if (combined.includes("akagera")) {
+    tag = "Safari Route";
+    highlight = "Akagera Safari & Big 5 Wildlife Gateway";
+  } else if (combined.includes("rusizi") || combined.includes("nyungwe") || combined.includes("cyangugu")) {
+    tag = "Rainforest Route";
+    highlight = "Nyungwe Forest Canopy Walk & Primates";
   }
-  if (combined.includes("musanze") || combined.includes("ruhengeri")) {
-    return {
-      duration: "~2 hrs",
-      distance: "95 km",
-      highlight: "Volcanoes National Park & Gorilla Trekking",
-      tag: "Volcanoes Route",
-    };
-  }
-  if (combined.includes("karongi") || combined.includes("kibuye")) {
-    return {
-      duration: "~3 hrs",
-      distance: "135 km",
-      highlight: "Lake Kivu Islands, Boat Tours & Tea Plantations",
-      tag: "Lakeside Route",
-    };
-  }
-  if (combined.includes("huye") || combined.includes("butare")) {
-    return {
-      duration: "~2.5 hrs",
-      distance: "130 km",
-      highlight: "Ethnographic Museum & Cultural Heritage",
-      tag: "Heritage Route",
-    };
-  }
-  if (combined.includes("akagera")) {
-    return {
-      duration: "~2.5 hrs",
-      distance: "110 km",
-      highlight: "Akagera Safari & Big 5 Wildlife Gateway",
-      tag: "Safari Route",
-    };
-  }
-  if (combined.includes("rusizi") || combined.includes("nyungwe") || combined.includes("cyangugu")) {
-    return {
-      duration: "~5.5 hrs",
-      distance: "240 km",
-      highlight: "Nyungwe Forest Canopy Walk & Primates",
-      tag: "Rainforest Route",
-    };
-  }
+
   return {
-    duration: "Direct",
-    distance: "Intercity",
-    highlight: "Door-to-door private transport",
-    tag: "Private Ride",
+    duration: details.durationFormatted,
+    distance: details.distanceFormatted,
+    distanceKm: details.distanceKm,
+    durationMins: details.durationMins,
+    highlight,
+    tag,
   };
 };
 
@@ -861,29 +841,44 @@ const Transport = () => {
                               </div>
 
                               <div className="border rounded-lg divide-y">
-                              {visibleOptions.map((option) => (
-                                <div key={option.pricingId} className="p-3 flex items-start justify-between gap-3">
-                                  <div>
-                                    <p className="text-sm font-medium flex items-center gap-1">
-                                      <MapPin className="w-3 h-3 text-primary" />
-                                      {option.route.from_location} <ArrowLeftRight className="w-3 h-3 text-muted-foreground" /> {option.route.to_location}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      {option.route.distance_km ? `${option.route.distance_km} km` : "Distance not set"}
-                                    </p>
+                              {visibleOptions.map((option) => {
+                                const routeDetails = calculateRouteDetails(
+                                  option.route.from_location,
+                                  option.route.to_location,
+                                  option.route.distance_km
+                                );
+
+                                return (
+                                  <div key={option.pricingId} className="p-3.5 flex items-start justify-between gap-3 hover:bg-muted/20 transition-colors">
+                                    <div>
+                                      <p className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
+                                        <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+                                        <span>{option.route.from_location}</span>
+                                        <ArrowLeftRight className="w-3 h-3 text-muted-foreground" />
+                                        <span>{option.route.to_location}</span>
+                                      </p>
+                                      <div className="flex items-center gap-2 mt-1 text-xs">
+                                        <span className="font-semibold text-foreground/80">{routeDetails.distanceFormatted}</span>
+                                        <span className="text-muted-foreground">•</span>
+                                        <span className="flex items-center gap-1 text-primary font-medium">
+                                          <Clock className="w-3 h-3 text-primary shrink-0" />
+                                          {routeDetails.durationFormatted} drive
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                      <p className="text-sm font-bold text-primary">{displayMoney(option.price, option.currency)}</p>
+                                      <Button
+                                        size="sm"
+                                        className="mt-1 h-8 px-3 font-semibold text-xs"
+                                        onClick={() => addToCart({ item_type: "airport_transfer_pricing", reference_id: option.pricingId })}
+                                      >
+                                        Book
+                                      </Button>
+                                    </div>
                                   </div>
-                                  <div className="text-right">
-                                    <p className="text-sm font-semibold text-primary">{displayMoney(option.price, option.currency)}</p>
-                                    <Button
-                                      size="sm"
-                                      className="mt-1"
-                                      onClick={() => addToCart({ item_type: "airport_transfer_pricing", reference_id: option.pricingId })}
-                                    >
-                                      Book
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                               </div>
                             </div>
                           )}

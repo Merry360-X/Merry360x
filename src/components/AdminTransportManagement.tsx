@@ -34,6 +34,7 @@ import {
   Navigation
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { calculateRouteDetails } from "@/lib/route-calculator";
 
 export interface TransportRoute {
   id: string;
@@ -460,7 +461,7 @@ export function AdminTransportManagement({
                     </TableRow>
                   ) : (
                     filteredRoutes.map((r) => {
-                      const isInlineEditing = inlinePriceEditId === r.id;
+                      const details = calculateRouteDetails(r.from_location, r.to_location);
                       return (
                         <TableRow key={r.id} className="hover:bg-muted/30 transition-colors">
                           <TableCell>
@@ -474,8 +475,13 @@ export function AdminTransportManagement({
                                   <span className="text-muted-foreground font-normal">→</span>
                                   <span className="text-primary">{r.to_location}</span>
                                 </div>
-                                <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                                  <span>Door-to-door passenger ride</span>
+                                <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                                  <span className="font-semibold text-foreground/80">{details.distanceFormatted}</span>
+                                  <span>•</span>
+                                  <span className="flex items-center gap-1 text-primary font-medium">
+                                    <Clock className="w-3 h-3 text-primary" />
+                                    {details.durationFormatted} drive
+                                  </span>
                                 </div>
                               </div>
                             </div>
@@ -765,6 +771,27 @@ export function AdminTransportManagement({
                 ))}
               </div>
             </div>
+
+            {/* Calculated Distance & Driving Time Preview */}
+            {(() => {
+              const preview = calculateRouteDetails(routeForm.from_location, routeForm.to_location);
+              return (
+                <div className="flex items-center gap-2.5 p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs">
+                  <div className="p-1.5 rounded-md bg-primary/10 text-primary shrink-0">
+                    <Clock className="w-4 h-4 text-primary" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-foreground flex items-center gap-1.5">
+                      <span>Calculated Distance:</span>
+                      <span className="text-primary font-bold">{preview.distanceFormatted}</span>
+                    </div>
+                    <p className="text-muted-foreground mt-0.5">
+                      Estimated travel time: <span className="text-foreground font-medium">{preview.durationFormatted}</span> driving time
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Price & Currency */}
             <div className="grid grid-cols-2 gap-3">
