@@ -1322,22 +1322,70 @@ async function createModification({ auth, body }) {
     // If it's a property change, a new property should ideally be specified
   }
 
-  const { data: calcRows, error: calcErr } = await auth.adminClient.rpc("calculate_booking_modification_difference", {
-    p_booking_id: booking.id,
-    p_new_check_in: newCheckIn,
-    p_new_check_out: newCheckOut,
-    p_new_property_id: resolvedNewPropertyId,
-  });
+  let oldPrice = safeAmount(booking.total_price);
+  let newPrice = oldPrice;
+  let difference = 0;
+  let currency = safeStr(booking.currency || "USD", 12).toUpperCase();
+  let calculated = false;
 
-  if (calcErr || !Array.isArray(calcRows) || calcRows.length === 0) {
-    throw Object.assign(new Error(calcErr?.message || "Failed to calculate pricing difference"), { status: 400 });
+  try {
+    const { data: calcRows, error: calcErr } = await auth.adminClient.rpc("calculate_booking_modification_difference", {
+      p_booking_id: booking.id,
+      p_new_check_in: newCheckIn,
+      p_new_check_out: newCheckOut,
+      p_new_property_id: resolvedNewPropertyId,
+    });
+
+    if (!calcErr && Array.isArray(calcRows) && calcRows.length > 0) {
+      const calc = calcRows[0] || {};
+      oldPrice = safeAmount(calc.old_price !== undefined ? calc.old_price : booking.total_price);
+      newPrice = safeAmount(calc.new_price !== undefined ? calc.new_price : booking.total_price);
+      difference = safeAmount(calc.difference !== undefined ? calc.difference : (newPrice - oldPrice));
+      currency = safeStr(calc.currency || booking.currency || "USD", 12).toUpperCase();
+      calculated = true;
+    }
+  } catch (rpcErr) {
+    console.warn("[PostBooking] RPC calculate_booking_modification_difference failed, using fallback:", rpcErr);
   }
 
-  const calc = calcRows[0] || {};
-  const oldPrice = safeAmount(calc.old_price || booking.total_price);
-  const newPrice = safeAmount(calc.new_price || booking.total_price);
-  const difference = safeAmount(calc.difference || (newPrice - oldPrice));
-  const currency = safeStr(calc.currency || booking.currency || "USD", 12).toUpperCase();
+  // Fallback calculation if RPC encountered an error or ambiguous column
+  if (!calculated) {
+    const oldCheckIn = booking.check_in ? new Date(booking.check_in) : new Date();
+    const oldCheckOut = booking.check_out ? new Date(booking.check_out) : new Date();
+    const oldNights = Math.max(1, Math.round((oldCheckOut.getTime() - oldCheckIn.getTime()) / (1000 * 60 * 60 * 24)) || 1);
+
+    const targetCheckIn = newCheckIn ? new Date(newCheckIn) : oldCheckIn;
+    const targetCheckOut = newCheckOut ? new Date(newCheckOut) : oldCheckOut;
+    const newNights = Math.max(1, Math.round((targetCheckOut.getTime() - targetCheckIn.getTime()) / (1000 * 60 * 60 * 24)) || 1);
+
+    const targetPropertyId = resolvedNewPropertyId || booking.property_id;
+    let pricePerNight = null;
+
+    if (targetPropertyId) {
+      const { data: prop } = await auth.adminClient
+        .from("properties")
+        .select("price_per_night, currency")
+        .eq("id", targetPropertyId)
+        .maybeSingle();
+
+      if (prop) {
+        if (prop.price_per_night !== null && prop.price_per_night !== undefined && Number(prop.price_per_night) > 0) {
+          pricePerNight = Number(prop.price_per_night);
+        }
+        if (prop.currency) {
+          currency = String(prop.currency).toUpperCase();
+        }
+      }
+    }
+
+    if (pricePerNight !== null && pricePerNight > 0) {
+      newPrice = Math.round(pricePerNight * newNights * 100) / 100;
+    } else {
+      newPrice = oldNights > 0 ? Math.round(((oldPrice / oldNights) * newNights) * 100) / 100 : oldPrice;
+    }
+
+    difference = Math.round((newPrice - oldPrice) * 100) / 100;
+  }
 
   const payload = {
     booking_id: booking.id,

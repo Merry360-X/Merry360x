@@ -325,13 +325,13 @@ DECLARE
   v_old_nights INT;
   v_new_nights INT;
   v_price_per_night NUMERIC(12,2);
-  v_currency TEXT;
+  v_curr TEXT;
   v_old_price NUMERIC(12,2);
   v_new_price NUMERIC(12,2);
 BEGIN
   SELECT * INTO v_booking
-  FROM public.bookings
-  WHERE id = p_booking_id;
+  FROM public.bookings b
+  WHERE b.id = p_booking_id;
 
   IF v_booking.id IS NULL THEN
     RAISE EXCEPTION 'Booking not found';
@@ -342,18 +342,18 @@ BEGIN
   v_new_nights := GREATEST((COALESCE(p_new_check_out, v_booking.check_out) - COALESCE(p_new_check_in, v_booking.check_in)), 1);
 
   IF p_new_property_id IS NOT NULL THEN
-    SELECT COALESCE(price_per_night, 0), COALESCE(currency, v_booking.currency, 'USD')
-      INTO v_price_per_night, v_currency
-    FROM public.properties
-    WHERE id = p_new_property_id;
+    SELECT COALESCE(p.price_per_night, 0), COALESCE(p.currency, v_booking.currency, 'USD')
+      INTO v_price_per_night, v_curr
+    FROM public.properties p
+    WHERE p.id = p_new_property_id;
   ELSIF v_booking.property_id IS NOT NULL THEN
-    SELECT COALESCE(price_per_night, 0), COALESCE(currency, v_booking.currency, 'USD')
-      INTO v_price_per_night, v_currency
-    FROM public.properties
-    WHERE id = v_booking.property_id;
+    SELECT COALESCE(p.price_per_night, 0), COALESCE(p.currency, v_booking.currency, 'USD')
+      INTO v_price_per_night, v_curr
+    FROM public.properties p
+    WHERE p.id = v_booking.property_id;
   ELSE
     v_price_per_night := NULL;
-    v_currency := COALESCE(v_booking.currency, 'USD');
+    v_curr := COALESCE(v_booking.currency, 'USD');
   END IF;
 
   IF v_price_per_night IS NOT NULL AND v_price_per_night > 0 THEN
@@ -371,7 +371,7 @@ BEGIN
     ROUND(v_old_price, 2),
     ROUND(v_new_price, 2),
     ROUND(v_new_price - v_old_price, 2),
-    COALESCE(v_currency, 'USD');
+    COALESCE(v_curr, 'USD');
 END;
 $$;
 
