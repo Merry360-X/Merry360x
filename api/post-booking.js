@@ -11,6 +11,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL |
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const BREVO_API_KEY = process.env.BREVO_API_KEY || "";
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@merry360x.com";
 
 const APP_BASE_URL = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://merry360x.com";
 
@@ -549,11 +550,12 @@ async function notifyModification({ adminClient, booking, modification, userEmai
   const sign = diff > 0 ? "+" : "";
   const targetUserId = booking.guest_id || modification.user_id;
 
+  // 1. In-App & Push Notifications
   if (targetUserId) {
     await createInAppNotification(adminClient, {
       userId: targetUserId,
       title: "Booking modification proposal",
-      body: `A ${modification.modification_type.replaceAll("_", " ")} proposal was sent for booking ${bookingRef} (${sign}${readableMoney(diff, modification.currency)}).`,
+      body: `A ${String(modification.modification_type || "change").replaceAll("_", " ")} proposal was sent for booking ${bookingRef} (${sign}${readableMoney(diff, modification.currency)}).`,
       type: "booking_modification",
       channel: "in_app",
       data: { booking_modification_id: modification.id, booking_id: booking.id },
@@ -562,36 +564,165 @@ async function notifyModification({ adminClient, booking, modification, userEmai
     await createInAppNotification(adminClient, {
       userId: targetUserId,
       title: "Booking modification proposal",
-      body: `A ${modification.modification_type.replaceAll("_", " ")} proposal was sent for booking ${bookingRef}.`,
+      body: `A ${String(modification.modification_type || "change").replaceAll("_", " ")} proposal was sent for booking ${bookingRef}.`,
       type: "booking_modification",
       channel: "push",
       data: { booking_modification_id: modification.id, booking_id: booking.id },
     });
   }
 
+  // 2. Resolve Customer Email & Name reliably
+  let resolvedEmail = userEmail || booking.guest_email || "";
+  let resolvedName = booking.guest_name || "";
+
+  if (!resolvedEmail && targetUserId) {
+    try {
+      const { data: profile } = await adminClient
+        .from("profiles")
+        .select("email, full_name")
+        .eq("id", targetUserId)
+        .maybeSingle();
+
+      if (profile?.email) {
+        resolvedEmail = profile.email;
+      }
+      if (!resolvedName && profile?.full_name) {
+        resolvedName = profile.full_name;
+      }
+    } catch (profileErr) {
+      console.warn("[notifyModification] Profile lookup failed:", profileErr);
+    }
+
+    if (!resolvedEmail) {
+      try {
+        const { data: authUser } = await adminClient.auth.admin.getUserById(targetUserId);
+        if (authUser?.user?.email) {
+          resolvedEmail = authUser.user.email;
+          if (!resolvedName) {
+            resolvedName = authUser.user.user_metadata?.full_name || authUser.user.user_metadata?.name || "Customer";
+          }
+        }
+      } catch (authErr) {
+        console.warn("[notifyModification] Auth user lookup failed:", authErr);
+      }
+    }
+  }
+
+  if (!resolvedName) {
+    resolvedName = "Valued Guest";
+  }
+
+  // 3. Resolve Property Names for Property Change / Alternative Offer
+  let oldPropertyName = "";
+  let newPropertyName = "";
+
+  const oldPropId = modification.old_property_id || booking.property_id;
+  const newPropId = modification.new_property_id;
+
+  if (oldPropId) {
+    try {
+      const { data: oldProp } = await adminClient
+        .from("properties")
+        .select("title")
+        .eq("id", oldPropId)
+        .maybeSingle();
+      if (oldProp?.title) oldPropertyName = oldProp.title;
+    } catch (e) {
+      console.warn("[notifyModification] Old property title lookup failed:", e);
+    }
+  }
+
+  if (newPropId) {
+    try {
+      const { data: newProp } = await adminClient
+        .from("properties")
+        .select("title")
+        .eq("id", newPropId)
+        .maybeSingle();
+      if (newProp?.title) newPropertyName = newProp.title;
+    } catch (e) {
+      console.warn("[notifyModification] New property title lookup failed:", e);
+    }
+  }
+
+  // 4. Construct Email Details
+  const modType = String(modification.modification_type || "date_change").toLowerCase();
+  const readableType = modType === "property_change"
+    ? "Property Change"
+    : modType === "alternative_offer"
+    ? "Alternative Property Offer"
+    : modType === "date_change"
+    ? "Date Change"
+    : modType.replaceAll("_", " ");
+
+  const detailRows = [
+    { label: "Booking Reference", value: escapeHtml(bookingRef) },
+    { label: "Modification Type", value: escapeHtml(readableType) },
+  ];
+
+  if (oldPropertyName || newPropertyName) {
+    if (oldPropertyName) detailRows.push({ label: "Original Property", value: escapeHtml(oldPropertyName) });
+    if (newPropertyName) detailRows.push({ label: "Proposed New Property", value: escapeHtml(newPropertyName) });
+  }
+
+  if (modification.new_check_in || modification.new_check_out) {
+    if (modification.old_check_in) {
+      detailRows.push({ label: "Original Dates", value: escapeHtml(`${modification.old_check_in} to ${modification.old_check_out || "N/A"}`) });
+    }
+    if (modification.new_check_in) {
+      detailRows.push({ label: "Proposed Dates", value: escapeHtml(`${modification.new_check_in} to ${modification.new_check_out || "N/A"}`) });
+    }
+  }
+
+  detailRows.push(
+    { label: "Original Price", value: escapeHtml(readableMoney(modification.old_price, modification.currency)) },
+    { label: "New Price", value: escapeHtml(readableMoney(modification.new_price, modification.currency)) },
+    { label: "Price Difference", value: escapeHtml(`${sign}${readableMoney(diff, modification.currency)}`) }
+  );
+
+  if (modification.reason) {
+    detailRows.push({ label: "Reason", value: escapeHtml(String(modification.reason)) });
+  }
+  if (modification.proposal_message) {
+    detailRows.push({ label: "Message from Team", value: escapeHtml(String(modification.proposal_message)) });
+  }
+
+  let subject = `Action Required: Booking modification proposal for ${bookingRef}`;
+  if (modType === "property_change") {
+    subject = `🏠 Action Required: Property change proposed for Booking ${bookingRef}`;
+  } else if (modType === "alternative_offer") {
+    subject = `✨ Action Required: Alternative accommodation offered for Booking ${bookingRef}`;
+  } else if (modType === "date_change") {
+    subject = `📅 Action Required: Date change proposed for Booking ${bookingRef}`;
+  }
+
   const html = renderMinimalEmail({
-    eyebrow: "Booking modification",
-    title: "A booking change needs your response",
-    subtitle: "Review the old vs new prices and accept or reject.",
-    bodyHtml: keyValueRows([
-      { label: "Booking", value: escapeHtml(bookingRef) },
-      { label: "Type", value: escapeHtml(String(modification.modification_type || "").replaceAll("_", " ")) },
-      { label: "Old Price", value: escapeHtml(readableMoney(modification.old_price, modification.currency)) },
-      { label: "New Price", value: escapeHtml(readableMoney(modification.new_price, modification.currency)) },
-      { label: "Difference", value: escapeHtml(`${sign}${readableMoney(diff, modification.currency)}`) },
-      { label: "Message", value: escapeHtml(String(modification.proposal_message || "")) },
-    ]),
-      ctaText: "Review in My Bookings",
-      ctaUrl: appUrl("/my-bookings"),
+    eyebrow: "Booking Modification",
+    title: "Action Required: Review Proposed Booking Change",
+    subtitle: `Hi ${escapeHtml(resolvedName)}, a change has been proposed for your booking ${bookingRef}. Please review the details and accept or decline the change.`,
+    bodyHtml: `
+      ${keyValueRows(detailRows)}
+      <div style="margin-top: 20px; padding: 14px; background-color: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
+        <p style="margin: 0; font-size: 14px; color: #166534; font-weight: 500; line-height: 1.5;">
+          👉 Please log in to your account and go to <strong>My Bookings</strong> to accept or decline this change proposal.
+        </p>
+      </div>
+    `,
+    ctaText: "Review & Accept / Decline in My Bookings",
+    ctaUrl: appUrl("/my-bookings"),
   });
 
-  await sendEmailNotification({
-    toEmail: userEmail || booking.guest_email,
-    toName: booking.guest_name || "Guest",
-    subject: "Booking modification proposal",
-    html,
-    tags: ["post-booking", "modification"],
-  });
+  if (resolvedEmail) {
+    await sendEmailNotification({
+      toEmail: resolvedEmail,
+      toName: resolvedName,
+      subject,
+      html,
+      tags: ["post-booking", "modification", modType],
+    });
+  } else {
+    console.warn("[notifyModification] Could not determine guest email for booking:", booking.id);
+  }
 }
 
 async function tryAutoChargeFromWallet({ adminClient, charge }) {
@@ -2452,6 +2583,39 @@ async function respondModification({ auth, body }) {
       throw Object.assign(new Error(updErr?.message || "Failed to reject booking modification"), { status: 400 });
     }
 
+    // Notify Admin/Support that customer rejected proposal
+    try {
+      const { data: booking } = await auth.adminClient
+        .from("bookings")
+        .select("id, guest_name, guest_email, host_id")
+        .eq("id", mod.booking_id)
+        .maybeSingle();
+
+      const bookingRef = `#${String(mod.booking_id).slice(0, 8).toUpperCase()}`;
+      await sendEmailNotification({
+        toEmail: SUPPORT_EMAIL,
+        toName: "Merry360X Support",
+        subject: `[Update] Customer declined booking modification for ${bookingRef}`,
+        html: renderMinimalEmail({
+          eyebrow: "Modification Response",
+          title: "Booking Modification Declined",
+          subtitle: `The customer has declined the proposed change for booking ${bookingRef}.`,
+          bodyHtml: keyValueRows([
+            { label: "Booking Reference", value: escapeHtml(bookingRef) },
+            { label: "Customer", value: escapeHtml(booking?.guest_name || "Guest") },
+            { label: "Customer Email", value: escapeHtml(booking?.guest_email || "N/A") },
+            { label: "Customer Note", value: escapeHtml(note || "No note provided") },
+            { label: "Status", value: "DECLINED" },
+          ]),
+          ctaText: "Open Admin Console",
+          ctaUrl: appUrl("/admin-post-booking"),
+        }),
+        tags: ["post-booking", "modification-declined"],
+      });
+    } catch (e) {
+      console.warn("[respondModification] Admin notification email failed:", e);
+    }
+
     return { booking_modification: updated };
   }
 
@@ -2519,6 +2683,39 @@ async function respondModification({ auth, body }) {
     channel: "in_app",
     data: { booking_modification_id: accepted.id, payment_status: paymentStatus },
   });
+
+  // Notify Admin/Support that customer accepted proposal
+  try {
+    const { data: booking } = await auth.adminClient
+      .from("bookings")
+      .select("id, guest_name, guest_email, host_id")
+      .eq("id", mod.booking_id)
+      .maybeSingle();
+
+    const bookingRef = `#${String(mod.booking_id).slice(0, 8).toUpperCase()}`;
+    await sendEmailNotification({
+      toEmail: SUPPORT_EMAIL,
+      toName: "Merry360X Support",
+      subject: `🎉 Customer accepted booking modification for ${bookingRef}`,
+      html: renderMinimalEmail({
+        eyebrow: "Modification Response",
+        title: "Booking Modification Accepted",
+        subtitle: `The customer has accepted the proposed change for booking ${bookingRef}.`,
+        bodyHtml: keyValueRows([
+          { label: "Booking Reference", value: escapeHtml(bookingRef) },
+          { label: "Customer", value: escapeHtml(booking?.guest_name || "Guest") },
+          { label: "Customer Email", value: escapeHtml(booking?.guest_email || "N/A") },
+          { label: "Payment Status", value: escapeHtml(paymentStatus.toUpperCase()) },
+          { label: "Status", value: "ACCEPTED" },
+        ]),
+        ctaText: "Open Admin Console",
+        ctaUrl: appUrl("/admin-post-booking"),
+      }),
+      tags: ["post-booking", "modification-accepted"],
+    });
+  } catch (e) {
+    console.warn("[respondModification] Admin notification email failed:", e);
+  }
 
   return { booking_modification: accepted };
 }
