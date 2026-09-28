@@ -2341,8 +2341,10 @@ export default function CheckoutNew() {
             transport_id: item.item_type === 'transport_vehicle'
               ? item.reference_id
               : item.item_type === 'airport_transfer_pricing'
-                ? item.transport_vehicle_id || null
-                : null,
+                ? ((item as any).transport_vehicle_id || item.reference_id)
+                : (item.item_type === 'transport_route' || item.item_type === 'transport_service')
+                  ? item.reference_id
+                  : null,
             booking_type: mappedBookingType,
             check_in: isProperty ? propertyCheckIn : defaultDates.checkIn,
             check_out: isProperty ? propertyCheckOut : defaultDates.checkOut,

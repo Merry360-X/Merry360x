@@ -150,10 +150,20 @@ async function resolveHostAndItem(supabase, booking) {
       .from("transport_vehicles")
       .select("title, owner_id, created_by")
       .eq("id", booking.transport_id)
-      .single();
+      .maybeSingle();
     if (data) {
       hostId = data.owner_id || data.created_by;
       itemTitle = data.title || itemTitle;
+    } else {
+      const { data: route } = await supabase
+        .from("transport_routes")
+        .select("title, from_location, to_location, created_by")
+        .eq("id", booking.transport_id)
+        .maybeSingle();
+      if (route) {
+        hostId = route.created_by;
+        itemTitle = route.title || `Transfer (${route.from_location || ""} → ${route.to_location || ""})`;
+      }
     }
   }
 
@@ -334,9 +344,38 @@ async function resolveHostRecipientsFromItems(supabase, items = []) {
         .from("transport_vehicles")
         .select("owner_id, created_by, title")
         .eq("id", referenceId)
-        .single();
+        .maybeSingle();
       hostId = data?.owner_id || data?.created_by || null;
       resolvedTitle = data?.title || resolvedTitle;
+    } else if (itemType === "airport_transfer_pricing") {
+      const { data: pricing } = await supabase
+        .from("airport_transfer_pricing")
+        .select(`
+          id,
+          vehicle_id,
+          route_id,
+          vehicle:transport_vehicles(id, title, owner_id, created_by),
+          route:airport_transfer_routes(from_location, to_location)
+        `)
+        .eq("id", referenceId)
+        .maybeSingle();
+      if (pricing) {
+        hostId = pricing.vehicle?.owner_id || pricing.vehicle?.created_by || null;
+        const fromLoc = pricing.route?.from_location || "Airport";
+        const toLoc = pricing.route?.to_location || "Destination";
+        const vehTitle = pricing.vehicle?.title || "Airport Transfer";
+        resolvedTitle = `${vehTitle} (${fromLoc} → ${toLoc})`;
+      }
+    } else if (itemType === "transport_route" || itemType === "transport_service") {
+      const { data: route } = await supabase
+        .from("transport_routes")
+        .select("id, title, from_location, to_location, created_by")
+        .eq("id", referenceId)
+        .maybeSingle();
+      if (route) {
+        hostId = route.created_by || null;
+        resolvedTitle = route.title || `Transfer (${route.from_location || ""} → ${route.to_location || ""})`;
+      }
     }
 
     if (!hostId) continue;
@@ -1037,6 +1076,26 @@ export default async function handler(req, res) {
                   .limit(1)
                   .maybeSingle();
                 if (hostProfile?.full_name) resolvedHostName = hostProfile.full_name;
+              }
+            } else {
+              const { data: route } = await supabase
+                .from("transport_routes")
+                .select("title, from_location, to_location, created_by")
+                .eq("id", dbBooking.transport_id)
+                .maybeSingle();
+              if (route) {
+                if (!resolvedServiceName) resolvedServiceName = route.title || `Transfer (${route.from_location || ""} → ${route.to_location || ""})`;
+                if (!resolvedLocation) resolvedLocation = route.from_location || route.to_location || "Rwanda";
+                if (!resolvedAddress) resolvedAddress = `${route.from_location || ""} to ${route.to_location || ""}`;
+                if (!resolvedHostName && route.created_by) {
+                  const { data: hostProfile } = await supabase
+                    .from("profiles")
+                    .select("full_name")
+                    .or(`id.eq.${route.created_by},user_id.eq.${route.created_by}`)
+                    .limit(1)
+                    .maybeSingle();
+                  if (hostProfile?.full_name) resolvedHostName = hostProfile.full_name;
+                }
               }
             }
           }

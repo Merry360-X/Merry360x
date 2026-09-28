@@ -794,19 +794,59 @@ async function sendHostNotification(supabase, booking, item) {
     } else if (item.item_type === 'transport_vehicle') {
       const { data: vehicle, error: vehError } = await supabase
         .from('transport_vehicles')
-        .select('title, owner_id')
+        .select('title, owner_id, created_by')
         .eq('id', item.reference_id)
-        .single();
+        .maybeSingle();
       
       if (vehError) {
         console.error("❌ Error fetching vehicle:", vehError);
-        return false;
       }
       
       if (vehicle) {
         itemTitle = vehicle.title;
         itemType = "transport";
-        hostId = vehicle.owner_id;
+        hostId = vehicle.owner_id || vehicle.created_by;
+      }
+    } else if (item.item_type === 'airport_transfer_pricing') {
+      const { data: pricing, error: pError } = await supabase
+        .from("airport_transfer_pricing")
+        .select(`
+          id,
+          vehicle_id,
+          route_id,
+          vehicle:transport_vehicles(id, title, owner_id, created_by),
+          route:airport_transfer_routes(from_location, to_location)
+        `)
+        .eq("id", item.reference_id)
+        .maybeSingle();
+
+      if (pError) {
+        console.error("❌ Error fetching airport_transfer_pricing:", pError);
+      }
+
+      if (pricing) {
+        const fromLoc = pricing.route?.from_location || "Airport";
+        const toLoc = pricing.route?.to_location || "Destination";
+        const vehTitle = pricing.vehicle?.title || "Airport Transfer";
+        itemTitle = `${vehTitle} (${fromLoc} → ${toLoc})`;
+        itemType = "transport";
+        hostId = pricing.vehicle?.owner_id || pricing.vehicle?.created_by || null;
+      }
+    } else if (item.item_type === 'transport_route' || item.item_type === 'transport_service') {
+      const { data: route, error: rError } = await supabase
+        .from("transport_routes")
+        .select("id, title, from_location, to_location, created_by")
+        .eq("id", item.reference_id)
+        .maybeSingle();
+
+      if (rError) {
+        console.error("❌ Error fetching transport_routes:", rError);
+      }
+
+      if (route) {
+        itemTitle = route.title || `Transfer (${route.from_location || ""} → ${route.to_location || ""})`;
+        itemType = "transport";
+        hostId = route.created_by || null;
       }
     }
 
@@ -1101,12 +1141,25 @@ export default async function handler(req, res) {
       
       for (const item of items) {
         try {
+          const isTransportItem =
+            item.item_type === 'transport_vehicle' ||
+            item.item_type === 'airport_transfer_pricing' ||
+            item.item_type === 'transport_route' ||
+            item.item_type === 'transport_service';
+
+          const relationField =
+            item.item_type === 'property'
+              ? 'property_id'
+              : isTransportItem
+                ? 'transport_id'
+                : 'tour_id';
+
           // Check if booking already exists for this order and item
           const { data: existingBooking } = await supabase
             .from("bookings")
             .select("id")
             .eq("order_id", checkout.id)
-            .eq(item.item_type === 'property' ? "property_id" : item.item_type === 'transport_vehicle' ? "transport_id" : "tour_id", item.reference_id)
+            .eq(relationField, item.reference_id)
             .limit(1);
 
           if (existingBooking && existingBooking.length > 0) {
@@ -1161,6 +1214,49 @@ export default async function handler(req, res) {
             bookingData.check_out = bookingDetails?.check_out || item.metadata?.check_out || new Date().toISOString().split('T')[0];
             bookingData.status = 'confirmed';
             bookingData.confirmation_status = null;
+          } else if (item.item_type === 'airport_transfer_pricing') {
+            let vehicleId = null;
+            try {
+              const { data: pricingRow } = await supabase
+                .from("airport_transfer_pricing")
+                .select("vehicle_id")
+                .eq("id", item.reference_id)
+                .maybeSingle();
+              vehicleId = pricingRow?.vehicle_id || null;
+            } catch (e) {
+              console.warn("Error fetching airport_transfer_pricing vehicle_id:", e);
+            }
+
+            bookingData.booking_type = 'transport';
+            bookingData.transport_id = vehicleId || item.reference_id;
+            bookingData.check_in =
+              bookingDetails?.check_in ||
+              item.metadata?.check_in ||
+              bookingDetails?.pickup_date ||
+              item.metadata?.pickup_date ||
+              new Date().toISOString().split('T')[0];
+            bookingData.check_out =
+              bookingDetails?.check_out ||
+              item.metadata?.check_out ||
+              bookingData.check_in;
+            bookingData.status = 'confirmed';
+            bookingData.confirmation_status = null;
+          } else if (item.item_type === 'transport_route' || item.item_type === 'transport_service') {
+            bookingData.booking_type = 'transport';
+            bookingData.transport_id = item.reference_id;
+            bookingData.check_in =
+              bookingDetails?.check_in ||
+              item.metadata?.check_in ||
+              new Date().toISOString().split('T')[0];
+            bookingData.check_out =
+              bookingDetails?.check_out ||
+              item.metadata?.check_out ||
+              bookingData.check_in;
+            bookingData.status = 'confirmed';
+            bookingData.confirmation_status = null;
+          } else {
+            console.warn(`Unknown item_type '${item.item_type}', skipping booking insertion.`);
+            continue;
           }
 
           console.log("📝 Creating booking:", bookingData);

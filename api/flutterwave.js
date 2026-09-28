@@ -302,11 +302,46 @@ async function resolveCheckoutItemHostContext(supabase, item) {
       hostId = hostId || tour[hostField];
     }
   } else if (item?.item_type === "transport_vehicle") {
-    const { data: veh } = await supabase.from("transport_vehicles").select("title, owner_id").eq("id", item.reference_id).single();
+    const { data: veh } = await supabase.from("transport_vehicles").select("title, owner_id, created_by").eq("id", item.reference_id).single();
     if (veh) {
       itemTitle = veh.title;
       itemType = "transport";
-      hostId = hostId || veh.owner_id;
+      hostId = hostId || veh.owner_id || veh.created_by;
+    }
+  } else if (item?.item_type === "airport_transfer_pricing") {
+    const { data: pricing } = await supabase
+      .from("airport_transfer_pricing")
+      .select(`
+        id,
+        price,
+        currency,
+        vehicle_id,
+        route_id,
+        vehicle:transport_vehicles(id, title, owner_id, created_by),
+        route:airport_transfer_routes(from_location, to_location)
+      `)
+      .eq("id", item.reference_id)
+      .maybeSingle();
+
+    if (pricing) {
+      const fromLoc = pricing.route?.from_location || "Airport";
+      const toLoc = pricing.route?.to_location || "Destination";
+      const vehTitle = pricing.vehicle?.title || "Airport Transfer";
+      itemTitle = `${vehTitle} (${fromLoc} → ${toLoc})`;
+      itemType = "transport";
+      hostId = hostId || pricing.vehicle?.owner_id || pricing.vehicle?.created_by || null;
+    }
+  } else if (item?.item_type === "transport_route" || item?.item_type === "transport_service") {
+    const { data: route } = await supabase
+      .from("transport_routes")
+      .select("id, title, from_location, to_location, created_by")
+      .eq("id", item.reference_id)
+      .maybeSingle();
+
+    if (route) {
+      itemTitle = route.title || `Transfer (${route.from_location || ""} → ${route.to_location || ""})`;
+      itemType = "transport";
+      hostId = hostId || route.created_by || null;
     }
   }
 
@@ -419,10 +454,16 @@ async function createBookingsForPaidCheckout(supabase, checkoutData) {
 
   for (const item of items) {
     try {
+      const isTransportItem =
+        item.item_type === "transport_vehicle" ||
+        item.item_type === "airport_transfer_pricing" ||
+        item.item_type === "transport_route" ||
+        item.item_type === "transport_service";
+
       const relationField =
         item.item_type === "property"
           ? "property_id"
-          : item.item_type === "transport_vehicle"
+          : isTransportItem
             ? "transport_id"
             : "tour_id";
 
@@ -496,6 +537,46 @@ async function createBookingsForPaidCheckout(supabase, checkoutData) {
           bookingDetails?.check_out ||
           item.metadata?.check_out ||
           new Date().toISOString().split("T")[0];
+        bookingData.status = "confirmed";
+        bookingData.confirmation_status = null;
+      } else if (item.item_type === "airport_transfer_pricing") {
+        let vehicleId = null;
+        try {
+          const { data: pricingRow } = await supabase
+            .from("airport_transfer_pricing")
+            .select("vehicle_id")
+            .eq("id", item.reference_id)
+            .maybeSingle();
+          vehicleId = pricingRow?.vehicle_id || null;
+        } catch (e) {
+          console.warn("Error fetching airport_transfer_pricing vehicle_id:", e);
+        }
+
+        bookingData.booking_type = "transport";
+        bookingData.transport_id = vehicleId || item.reference_id;
+        bookingData.check_in =
+          bookingDetails?.check_in ||
+          item.metadata?.check_in ||
+          bookingDetails?.pickup_date ||
+          item.metadata?.pickup_date ||
+          new Date().toISOString().split("T")[0];
+        bookingData.check_out =
+          bookingDetails?.check_out ||
+          item.metadata?.check_out ||
+          bookingData.check_in;
+        bookingData.status = "confirmed";
+        bookingData.confirmation_status = null;
+      } else if (item.item_type === "transport_route" || item.item_type === "transport_service") {
+        bookingData.booking_type = "transport";
+        bookingData.transport_id = item.reference_id;
+        bookingData.check_in =
+          bookingDetails?.check_in ||
+          item.metadata?.check_in ||
+          new Date().toISOString().split("T")[0];
+        bookingData.check_out =
+          bookingDetails?.check_out ||
+          item.metadata?.check_out ||
+          bookingData.check_in;
         bookingData.status = "confirmed";
         bookingData.confirmation_status = null;
       } else {
