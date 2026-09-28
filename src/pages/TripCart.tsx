@@ -34,6 +34,7 @@ import {
   Loader2,
   Clock,
   Pencil,
+  Luggage,
   X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -690,6 +691,43 @@ export default function TripCart() {
                                   {t("tripCartPage.addDates")}
                                   <Pencil className="w-3 h-3" />
                                 </button>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Show travel info for transport routes & rides */}
+                          {(item.item_type === 'transport_route' || item.item_type === 'airport_transfer_pricing') && (
+                            <div className="mt-1.5 md:mt-2 space-y-1 text-xs text-muted-foreground">
+                              <div className="flex flex-wrap items-center gap-2 md:gap-3">
+                                {item.metadata?.pickup_date && (
+                                  <span className="flex items-center gap-1 font-medium text-foreground">
+                                    <Calendar className="w-2.5 h-2.5 md:w-3 md:h-3 text-primary" />
+                                    {new Date(item.metadata.pickup_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    {item.metadata?.pickup_time && ` at ${item.metadata.pickup_time}`}
+                                  </span>
+                                )}
+                                {item.metadata?.passengers && (
+                                  <span className="flex items-center gap-1">
+                                    <Users className="w-2.5 h-2.5 md:w-3 md:h-3" />
+                                    {item.metadata.passengers} {item.metadata.passengers === 1 ? 'passenger' : 'passengers'}
+                                  </span>
+                                )}
+                                {item.metadata?.luggage_count !== undefined && item.metadata.luggage_count > 0 && (
+                                  <span className="flex items-center gap-1">
+                                    <Luggage className="w-2.5 h-2.5 md:w-3 md:h-3" />
+                                    {item.metadata.luggage_count} bags
+                                  </span>
+                                )}
+                                {item.metadata?.is_round_trip && (
+                                  <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[10px] font-semibold">
+                                    Round-Trip
+                                  </span>
+                                )}
+                              </div>
+                              {item.metadata?.pickup_address && item.metadata?.dropoff_address && (
+                                <div className="text-[11px] text-muted-foreground flex items-center gap-1 truncate">
+                                  <span className="font-semibold text-foreground/80">Pickup:</span> {item.metadata.pickup_address} → <span className="font-semibold text-foreground/80">Drop:</span> {item.metadata.dropoff_address}
+                                </div>
                               )}
                             </div>
                           )}

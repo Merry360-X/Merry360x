@@ -40,6 +40,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useNotificationBadge, NotificationBadge } from "@/hooks/useNotificationBadge";
 import { resolvePropertyCoordinates } from "@/components/PropertyMap";
+import { calculateRouteDetails } from "@/lib/route-calculator";
 
 interface MetricCardProps {
   label: string;
@@ -721,6 +722,12 @@ export default function HostDashboard() {
   const [tours, setTours] = useState<Tour[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [routes, setRoutes] = useState<TransportRoute[]>([]);
+  const [isAddRouteDialogOpen, setIsAddRouteDialogOpen] = useState(false);
+  const [newRouteFrom, setNewRouteFrom] = useState("");
+  const [newRouteTo, setNewRouteTo] = useState("");
+  const [newRoutePrice, setNewRoutePrice] = useState<number>(50000);
+  const [newRouteCurrency, setNewRouteCurrency] = useState("RWF");
+  const [isSavingNewRoute, setIsSavingNewRoute] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [manualReviewRequests, setManualReviewRequests] = useState<ManualReviewRequest[]>([]);
   const [loadingManualReviewRequests, setLoadingManualReviewRequests] = useState(false);
@@ -8854,118 +8861,258 @@ export default function HostDashboard() {
               </div>
             </div>
 
-            {/* Routes */}
+            {/* Routes Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <div>
+                <div className="text-sm font-semibold text-foreground">Destinations & Routes</div>
+                <p className="text-xs text-muted-foreground">Manage your custom intercity and transfer destinations and prices.</p>
+              </div>
+              <Button size="sm" onClick={() => setIsAddRouteDialogOpen(true)}>
+                <Plus className="w-4 h-4 mr-1.5" /> Add Destination
+              </Button>
+            </div>
+
             <div className="mb-8">
-              <div className="text-sm font-semibold text-foreground mb-3">Routes</div>
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {(routes || []).map((r) => (
-                  <Card key={r.id} className="overflow-hidden">
-                    <div className="p-4">
-                      {editingRouteId === r.id ? (
-                        <div className="space-y-3">
-                          <div>
-                            <Label>From *</Label>
-                            <Input
-                              value={r.from_location}
-                              onChange={(e) => setRoutes((prev) => prev.map((x) => (x.id === r.id ? { ...x, from_location: e.target.value } : x)))}
-                              className="mt-1"
-                              placeholder="Airport"
-                            />
-                          </div>
-                          <div>
-                            <Label>To *</Label>
-                            <Input
-                              value={r.to_location}
-                              onChange={(e) => setRoutes((prev) => prev.map((x) => (x.id === r.id ? { ...x, to_location: e.target.value } : x)))}
-                              className="mt-1"
-                              placeholder="Gisenyi"
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
+                {(routes || []).map((r) => {
+                  const est = calculateRouteDetails(r.from_location, r.to_location);
+                  return (
+                    <Card key={r.id} className="overflow-hidden">
+                      <div className="p-4">
+                        {editingRouteId === r.id ? (
+                          <div className="space-y-3">
                             <div>
-                              <Label>Price (per trip)</Label>
+                              <Label>From *</Label>
                               <Input
-                                type="number"
-                                min={0}
-                                value={Number(r.base_price ?? 0)}
-                                onChange={(e) => setRoutes((prev) => prev.map((x) => (x.id === r.id ? { ...x, base_price: Number(e.target.value) } : x)))}
+                                value={r.from_location}
+                                onChange={(e) => setRoutes((prev) => prev.map((x) => (x.id === r.id ? { ...x, from_location: e.target.value } : x)))}
                                 className="mt-1"
+                                placeholder="Airport"
                               />
                             </div>
                             <div>
-                              <Label>Currency</Label>
-                              <Select
-                                value={String(r.currency ?? "RWF")}
-                                onValueChange={(v) => setRoutes((prev) => prev.map((x) => (x.id === r.id ? { ...x, currency: v } : x)))}
-                              >
-                                <SelectTrigger className="mt-1">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {currencies.map((c) => (
-                                    <SelectItem key={c.value} value={c.value}>
-                                      {c.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                              <Label>To *</Label>
+                              <Input
+                                value={r.to_location}
+                                onChange={(e) => setRoutes((prev) => prev.map((x) => (x.id === r.id ? { ...x, to_location: e.target.value } : x)))}
+                                className="mt-1"
+                                placeholder="Gisenyi"
+                              />
                             </div>
-                          </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <Label>Price (per trip)</Label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={Number(r.base_price ?? 0)}
+                                  onChange={(e) => setRoutes((prev) => prev.map((x) => (x.id === r.id ? { ...x, base_price: Number(e.target.value) } : x)))}
+                                  className="mt-1"
+                                />
+                              </div>
+                              <div>
+                                <Label>Currency</Label>
+                                <Select
+                                  value={String(r.currency ?? "RWF")}
+                                  onValueChange={(v) => setRoutes((prev) => prev.map((x) => (x.id === r.id ? { ...x, currency: v } : x)))}
+                                >
+                                  <SelectTrigger className="mt-1">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {currencies.map((c) => (
+                                      <SelectItem key={c.value} value={c.value}>
+                                        {c.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
 
-                          <div className="flex justify-end gap-2 pt-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setEditingRouteId(null);
-                                fetchData();
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={async () => {
-                                const ok = await updateRoute(r.id, {
-                                  from_location: r.from_location,
-                                  to_location: r.to_location,
-                                  base_price: Number(r.base_price ?? 0),
-                                  currency: r.currency ?? "RWF",
-                                });
-                                if (ok) setEditingRouteId(null);
-                              }}
-                            >
-                              <Save className="w-4 h-4" /> Save
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="font-semibold text-foreground">{r.from_location} → {r.to_location}</div>
-                          <div className="text-xs text-muted-foreground mt-1">Price per trip</div>
-                          <div className="flex items-center justify-between mt-3">
-                            <span className="text-primary font-bold">
-                              {formatDashboardMoney(Number(r.base_price ?? 0), r.currency || "RWF")}
-                            </span>
-                            <div className="flex gap-1">
-                              <Button size="sm" variant="ghost" onClick={() => setEditingRouteId(r.id)}>
-                                <Edit className="w-3 h-3" />
+                            <div className="flex justify-end gap-2 pt-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setEditingRouteId(null);
+                                  fetchData();
+                                }}
+                              >
+                                Cancel
                               </Button>
-                              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteRoute(r.id)}>
-                                <Trash2 className="w-3 h-3" />
+                              <Button
+                                size="sm"
+                                onClick={async () => {
+                                  const ok = await updateRoute(r.id, {
+                                    from_location: r.from_location,
+                                    to_location: r.to_location,
+                                    base_price: Number(r.base_price ?? 0),
+                                    currency: r.currency ?? "RWF",
+                                  });
+                                  if (ok) setEditingRouteId(null);
+                                }}
+                              >
+                                <Save className="w-4 h-4" /> Save
                               </Button>
                             </div>
                           </div>
-                        </>
-                      )}
-                    </div>
-                  </Card>
-                ))}
+                        ) : (
+                          <>
+                            <div className="font-semibold text-foreground">{r.from_location} → {r.to_location}</div>
+                            <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+                              <span>{est.durationFormatted} • {est.distanceFormatted}</span>
+                            </div>
+                            <div className="flex items-center justify-between mt-3">
+                              <span className="text-primary font-bold">
+                                {formatDashboardMoney(Number(r.base_price ?? 0), r.currency || "RWF")}
+                              </span>
+                              <div className="flex gap-1">
+                                <Button size="sm" variant="ghost" onClick={() => setEditingRouteId(r.id)}>
+                                  <Edit className="w-3 h-3" />
+                                </Button>
+                                <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteRoute(r.id)}>
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })}
                 {(routes || []).length === 0 && (
-                  <p className="text-muted-foreground col-span-full text-center py-6">No routes yet</p>
+                  <p className="text-muted-foreground col-span-full text-center py-6">No custom routes added yet</p>
                 )}
               </div>
             </div>
+
+            {/* Add Route Dialog for Hosts */}
+            <Dialog open={isAddRouteDialogOpen} onOpenChange={setIsAddRouteDialogOpen}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Add Destination Route</DialogTitle>
+                  <DialogDescription>
+                    Create a new intercity or transfer destination with your custom pricing.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div>
+                    <Label>From (Origin) *</Label>
+                    <Input
+                      placeholder="e.g. Kigali, Kigali Airport"
+                      value={newRouteFrom}
+                      onChange={(e) => setNewRouteFrom(e.target.value)}
+                      className="mt-1"
+                    />
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {["Kigali", "Kigali Airport", "Gisenyi (Rubavu)", "Musanze (Ruhengeri)"].map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setNewRouteFrom(p)}
+                          className="text-[10px] px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground"
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label>To (Destination) *</Label>
+                    <Input
+                      placeholder="e.g. Gisenyi, Musanze, Karongi, Akagera"
+                      value={newRouteTo}
+                      onChange={(e) => setNewRouteTo(e.target.value)}
+                      className="mt-1"
+                    />
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {["Gisenyi (Rubavu)", "Musanze (Ruhengeri)", "Karongi (Kibuye)", "Huye (Butare)", "Akagera", "Nyungwe"].map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setNewRouteTo(p)}
+                          className="text-[10px] px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground"
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {newRouteFrom.trim() && newRouteTo.trim() && (() => {
+                    const est = calculateRouteDetails(newRouteFrom, newRouteTo);
+                    return (
+                      <div className="p-2.5 rounded-lg bg-primary/5 border border-primary/20 text-xs flex items-center justify-between">
+                        <span className="text-muted-foreground">Estimated Distance & Time:</span>
+                        <span className="font-semibold text-primary">{est.durationFormatted} • {est.distanceFormatted}</span>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Price (per trip) *</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={newRoutePrice}
+                        onChange={(e) => setNewRoutePrice(Number(e.target.value))}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>Currency</Label>
+                      <Select value={newRouteCurrency} onValueChange={setNewRouteCurrency}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {currencies.map((c) => (
+                            <SelectItem key={c.value} value={c.value}>
+                              {c.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+
+                <DialogFooter className="gap-2 sm:gap-0">
+                  <Button variant="outline" onClick={() => setIsAddRouteDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    disabled={isSavingNewRoute || !newRouteFrom.trim() || !newRouteTo.trim()}
+                    onClick={async () => {
+                      setIsSavingNewRoute(true);
+                      try {
+                        const created = await createRoute({
+                          from_location: newRouteFrom.trim(),
+                          to_location: newRouteTo.trim(),
+                          base_price: Number(newRoutePrice || 0),
+                          currency: newRouteCurrency,
+                          is_published: true,
+                        });
+                        if (created) {
+                          setIsAddRouteDialogOpen(false);
+                          setNewRouteFrom("");
+                          setNewRouteTo("");
+                          setNewRoutePrice(50000);
+                        }
+                      } finally {
+                        setIsSavingNewRoute(false);
+                      }
+                    }}
+                  >
+                    {isSavingNewRoute ? "Creating..." : "Create Destination Route"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             {/* Vehicles */}
             <div className="text-sm font-semibold text-foreground mb-3">Vehicles</div>

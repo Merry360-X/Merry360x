@@ -19,6 +19,17 @@ export interface CartItemMetadata {
   end_date?: string;
   stay_base_total?: number;
   custom_prices_applied?: boolean;
+  // Transport & ride fields
+  pickup_date?: string;
+  pickup_time?: string;
+  pickup_address?: string;
+  dropoff_address?: string;
+  passengers?: number;
+  luggage_count?: number;
+  is_round_trip?: boolean;
+  return_date?: string;
+  return_time?: string;
+  notes?: string;
 }
 
 export interface GuestCartItem {

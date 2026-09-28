@@ -1,4 +1,4 @@
-import { Car, Search, MapPin, Frown, ArrowLeftRight, Plane, Building2, Map as MapIcon, Key, Users, Fuel, Settings, Calendar, Shield, ChevronRight, Clock, Sparkles, CheckCircle2, Navigation } from "lucide-react";
+import { Car, Search, MapPin, Frown, ArrowLeftRight, Plane, Building2, Map as MapIcon, Key, Users, Fuel, Settings, Calendar, Shield, ChevronRight, Clock, Sparkles, CheckCircle2, Navigation, Luggage, Check, AlertCircle, X } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,10 @@ import { useFxRates } from "@/hooks/useFxRates";
 import { convertAmount } from "@/lib/fx";
 import { Badge } from "@/components/ui/badge";
 import { calculateRouteDetails } from "@/lib/route-calculator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 // Transport service categories
 const transportCategories = [
@@ -127,6 +131,29 @@ const Transport = () => {
   const [airportDirectionFilter, setAirportDirectionFilter] = useState<"from" | "to">("from");
   const [intercityDestinationFilter, setIntercityDestinationFilter] = useState<string>("all");
   const [bookingRouteId, setBookingRouteId] = useState<string | null>(null);
+
+  // Booking Modal State for Intercity Rides
+  const [bookingModalRoute, setBookingModalRoute] = useState<TransportRouteRow | null>(null);
+  const [tripType, setTripType] = useState<"one_way" | "round_trip">("one_way");
+  const [pickupDate, setPickupDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split("T")[0];
+  });
+  const [pickupTime, setPickupTime] = useState("09:00");
+  const [returnDate, setReturnDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    return d.toISOString().split("T")[0];
+  });
+  const [returnTime, setReturnTime] = useState("16:00");
+  const [pickupAddress, setPickupAddress] = useState("");
+  const [dropoffAddress, setDropoffAddress] = useState("");
+  const [passengers, setPassengers] = useState(1);
+  const [luggageCount, setLuggageCount] = useState(1);
+  const [specialNotes, setSpecialNotes] = useState("");
+  const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
+
   const { addToCart: addCartItem, guestCart = [] } = useTripCart();
   const { currency: preferredCurrency } = usePreferences();
   const { usdRates } = useFxRates();
@@ -518,30 +545,53 @@ const Transport = () => {
     return source.map((item) => item.route);
   }, [routes, scoreRoute, strictLocationMode]);
 
+  const displayAirportVehicles = useMemo(() => {
+    if (!query.trim()) return airportVehicles;
+    const q = query.trim().toLowerCase();
+    return airportVehicles.filter(({ vehicle, options }) => {
+      const vehicleText = `${vehicle.title || ""} ${vehicle.provider_name || ""} ${vehicle.car_brand || ""} ${vehicle.car_model || ""} ${vehicle.vehicle_type || ""}`.toLowerCase();
+      const routesText = options.map((opt) => `${opt.route.from_location} ${opt.route.to_location}`).join(" ").toLowerCase();
+      return vehicleText.includes(q) || routesText.includes(q);
+    });
+  }, [airportVehicles, query]);
+
   const displayIntercityRoutes = useMemo(() => {
     const source = intercityRoutes.length > 0 ? intercityRoutes : DEFAULT_INTERCITY_ROUTES;
-    if (intercityDestinationFilter === "all") return source;
+    let list = source;
 
-    return source.filter((r) => {
-      const combined = `${r.from_location} ${r.to_location}`.toLowerCase();
-      if (intercityDestinationFilter === "gisenyi") {
-        return combined.includes("gisenyi") || combined.includes("rubavu");
-      }
-      if (intercityDestinationFilter === "musanze") {
-        return combined.includes("musanze") || combined.includes("ruhengeri");
-      }
-      if (intercityDestinationFilter === "karongi") {
-        return combined.includes("karongi") || combined.includes("kibuye");
-      }
-      if (intercityDestinationFilter === "huye") {
-        return combined.includes("huye") || combined.includes("butare");
-      }
-      if (intercityDestinationFilter === "akagera") {
-        return combined.includes("akagera");
-      }
-      return true;
-    });
-  }, [intercityRoutes, intercityDestinationFilter]);
+    if (intercityDestinationFilter !== "all") {
+      list = list.filter((r) => {
+        const combined = `${r.from_location} ${r.to_location}`.toLowerCase();
+        if (intercityDestinationFilter === "gisenyi") {
+          return combined.includes("gisenyi") || combined.includes("rubavu");
+        }
+        if (intercityDestinationFilter === "musanze") {
+          return combined.includes("musanze") || combined.includes("ruhengeri");
+        }
+        if (intercityDestinationFilter === "karongi") {
+          return combined.includes("karongi") || combined.includes("kibuye");
+        }
+        if (intercityDestinationFilter === "huye") {
+          return combined.includes("huye") || combined.includes("butare");
+        }
+        if (intercityDestinationFilter === "akagera") {
+          return combined.includes("akagera");
+        }
+        return true;
+      });
+    }
+
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      list = list.filter((r) => {
+        const meta = getRouteMeta(r.from_location, r.to_location);
+        const text = `${r.from_location} ${r.to_location} ${meta.tag} ${meta.highlight} ${meta.distance} ${meta.duration}`.toLowerCase();
+        return text.includes(q);
+      });
+    }
+
+    return list;
+  }, [intercityRoutes, intercityDestinationFilter, query]);
 
   const filteredServices = useMemo(() => {
     const scored = services
@@ -551,14 +601,22 @@ const Transport = () => {
       }))
       .sort((a, b) => b.score - a.score);
 
-    if (!strictLocationMode) {
-      return scored.map((item) => item.service);
+    let list = !strictLocationMode
+      ? scored.map((item) => item.service)
+      : (scored.filter((item) => item.score > 0).length > 0
+          ? scored.filter((item) => item.score > 0).map((item) => item.service)
+          : scored.map((item) => item.service));
+
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      list = list.filter((s) => {
+        const text = `${s.title || ""} ${s.description || ""}`.toLowerCase();
+        return text.includes(q);
+      });
     }
 
-    const matched = scored.filter((item) => item.score > 0);
-    const source = matched.length > 0 ? matched : scored;
-    return source.map((item) => item.service);
-  }, [services, scoreText, strictLocationMode]);
+    return list;
+  }, [services, scoreText, strictLocationMode, query]);
 
   const filteredVehicles = useMemo(() => {
     const scored = vehicles
@@ -570,14 +628,22 @@ const Transport = () => {
       }))
       .sort((a, b) => b.score - a.score);
 
-    if (!strictLocationMode) {
-      return scored.map((item) => item.vehicleRow);
+    let list = !strictLocationMode
+      ? scored.map((item) => item.vehicleRow)
+      : (scored.filter((item) => item.score > 0).length > 0
+          ? scored.filter((item) => item.score > 0).map((item) => item.vehicleRow)
+          : scored.map((item) => item.vehicleRow));
+
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      list = list.filter((v) => {
+        const text = `${v.title || ""} ${v.provider_name || ""} ${v.car_brand || ""} ${v.car_model || ""} ${v.vehicle_type || ""}`.toLowerCase();
+        return text.includes(q);
+      });
     }
 
-    const matched = scored.filter((item) => item.score > 0);
-    const source = matched.length > 0 ? matched : scored;
-    return source.map((item) => item.vehicleRow);
-  }, [vehicles, scoreText, strictLocationMode]);
+    return list;
+  }, [vehicles, scoreText, strictLocationMode, query]);
 
   const addToCart = async (payload: { item_type: string; reference_id: string }) => {
     const hasExistingCartItems = user ? tripCartCount > 0 : guestCart.length > 0;
@@ -598,15 +664,26 @@ const Transport = () => {
     toast({ title: t("common.addedToCart") });
   };
 
-  const handleBookIntercityRoute = async (r: TransportRouteRow) => {
+  const handleOpenBookingModal = (r: TransportRouteRow) => {
+    setBookingModalRoute(r);
+    setTripType("one_way");
+    setPickupAddress("");
+    setDropoffAddress("");
+    setPassengers(1);
+    setLuggageCount(1);
+    setSpecialNotes("");
+  };
+
+  const handleConfirmIntercityBooking = async (action: "cart" | "checkout") => {
+    if (!bookingModalRoute) return;
+    setIsSubmittingBooking(true);
     try {
-      setBookingRouteId(r.id);
-      let targetId = r.id;
+      let targetId = bookingModalRoute.id;
 
       // If this is a fallback client preset id, ensure a matching route exists in DB
-      if (r.id.startsWith("preset-")) {
-        const fromKeyword = r.from_location.split(" ")[0];
-        const toKeyword = r.to_location.split(" ")[0];
+      if (bookingModalRoute.id.startsWith("preset-")) {
+        const fromKeyword = bookingModalRoute.from_location.split(" ")[0];
+        const toKeyword = bookingModalRoute.to_location.split(" ")[0];
 
         const { data: existing } = await supabase
           .from("transport_routes")
@@ -623,10 +700,10 @@ const Transport = () => {
           const { data: created, error: createErr } = await supabase
             .from("transport_routes")
             .insert({
-              from_location: r.from_location,
-              to_location: r.to_location,
-              base_price: Number(r.base_price || 60000),
-              currency: r.currency || "RWF",
+              from_location: bookingModalRoute.from_location,
+              to_location: bookingModalRoute.to_location,
+              base_price: Number(bookingModalRoute.base_price || 60000),
+              currency: bookingModalRoute.currency || "RWF",
               is_published: true,
             })
             .select("id")
@@ -638,12 +715,41 @@ const Transport = () => {
         }
       }
 
-      await addToCart({ item_type: "transport_route", reference_id: targetId });
+      const metadata = {
+        pickup_date: pickupDate,
+        pickup_time: pickupTime,
+        pickup_address: pickupAddress.trim() || bookingModalRoute.from_location,
+        dropoff_address: dropoffAddress.trim() || bookingModalRoute.to_location,
+        passengers,
+        luggage_count: luggageCount,
+        is_round_trip: tripType === "round_trip",
+        return_date: tripType === "round_trip" ? returnDate : undefined,
+        return_time: tripType === "round_trip" ? returnTime : undefined,
+        notes: specialNotes.trim() || undefined,
+      };
+
+      const quantity = tripType === "round_trip" ? 2 : 1;
+      const ok = await addCartItem("transport_route" as any, targetId, quantity, metadata);
+
+      if (action === "checkout") {
+        setBookingModalRoute(null);
+        navigate("/checkout");
+      } else {
+        toast({
+          title: t("common.addedToCart", "Added to trip cart"),
+          description: `${bookingModalRoute.from_location} → ${bookingModalRoute.to_location} (${pickupDate} at ${pickupTime})`,
+        });
+        setBookingModalRoute(null);
+      }
     } catch (err) {
-      console.error("Error booking intercity route:", err);
-      await addToCart({ item_type: "transport_route", reference_id: r.id });
+      console.error("Error booking intercity ride:", err);
+      toast({
+        variant: "destructive",
+        title: "Booking error",
+        description: "Could not add route to booking. Please try again.",
+      });
     } finally {
-      setBookingRouteId(null);
+      setIsSubmittingBooking(false);
     }
   };
 
@@ -695,19 +801,38 @@ const Transport = () => {
 
       {/* Search */}
       <div className="container mx-auto px-4 lg:px-8 mb-12">
-        <div className="bg-card rounded-xl shadow-card p-4 flex flex-col md:flex-row items-stretch md:items-center gap-4 max-w-3xl mx-auto">
+        <div className="bg-card rounded-xl shadow-card p-4 flex flex-col md:flex-row items-stretch md:items-center gap-4 max-w-3xl mx-auto border border-border/60">
           <div className="flex-1 flex items-center gap-2 px-4">
             <div className="w-full">
               <div className="mb-1 text-xs font-semibold text-primary">Merry AI Search</div>
               <div className="flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-muted-foreground" />
+                <MapPin className="w-5 h-5 text-muted-foreground shrink-0" />
                 <input
                   type="text"
-                  placeholder="Ask Merry AI about rides, rentals, and transfers"
+                  placeholder="Search destinations (e.g. Kigali, Gisenyi, Musanze, Karongi, Airport...)"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      runSearch();
+                    }
+                  }}
                   className="w-full bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none text-sm"
                 />
+                {query.trim() && (
+                  <button
+                    onClick={() => {
+                      setQuery("");
+                      const params = new URLSearchParams(searchParams);
+                      params.delete("q");
+                      navigate({ search: params.toString() }, { replace: true });
+                    }}
+                    className="text-muted-foreground hover:text-foreground p-1"
+                    title="Clear search"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -749,14 +874,14 @@ const Transport = () => {
                   <Plane className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
                   <p className="text-muted-foreground">{t("transport.noAirportRoutes")}</p>
                 </div>
-              ) : airportVehicles.length === 0 ? (
+              ) : displayAirportVehicles.length === 0 ? (
                 <div className="bg-card rounded-xl p-8 shadow-card text-center">
                   <Plane className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-muted-foreground">No vehicles available for current airport routes</p>
+                  <p className="text-muted-foreground">No vehicles available matching your search.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {airportVehicles.map(({ vehicle, options }) => {
+                  {displayAirportVehicles.map(({ vehicle, options }) => {
                     const allImages = vehicle.exterior_images?.length
                       ? vehicle.exterior_images
                       : (vehicle.media?.length ? vehicle.media : (vehicle.image_url ? [vehicle.image_url] : []));
@@ -1049,10 +1174,9 @@ const Transport = () => {
 
                           <Button
                             className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm font-semibold text-xs px-4"
-                            onClick={() => handleBookIntercityRoute(r)}
-                            disabled={isBooking}
+                            onClick={() => handleOpenBookingModal(r)}
                           >
-                            {isBooking ? "Booking..." : "Book Ride"}
+                            Book Ride
                           </Button>
                         </div>
                       </div>
@@ -1222,6 +1346,278 @@ const Transport = () => {
           )}
         </>
       ) : null}
+
+      {/* Intercity Ride Booking Modal */}
+      <Dialog
+        open={!!bookingModalRoute}
+        onOpenChange={(open) => {
+          if (!open && !isSubmittingBooking) {
+            setBookingModalRoute(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto p-6 rounded-2xl">
+          {bookingModalRoute && (() => {
+            const meta = getRouteMeta(bookingModalRoute.from_location, bookingModalRoute.to_location);
+            const basePrice = Number(bookingModalRoute.base_price || 60000);
+            const multiplier = tripType === "round_trip" ? 2 : 1;
+            const totalPrice = basePrice * multiplier;
+            const currency = bookingModalRoute.currency || "RWF";
+
+            return (
+              <div className="space-y-5">
+                <DialogHeader className="text-left space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="bg-primary/10 text-primary font-semibold text-xs border-0">
+                      {meta.tag}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
+                      <Clock className="w-3.5 h-3.5" />
+                      {meta.duration} • {meta.distance}
+                    </span>
+                  </div>
+                  <DialogTitle className="text-xl font-bold flex items-center gap-2 text-foreground">
+                    <span>{bookingModalRoute.from_location}</span>
+                    <ArrowLeftRight className="w-4 h-4 text-primary shrink-0" />
+                    <span>{bookingModalRoute.to_location}</span>
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground">
+                    {meta.highlight}. Door-to-door private transfer with professional driver and air-conditioned vehicle.
+                  </DialogDescription>
+                </DialogHeader>
+
+                {/* Trip Type Selector */}
+                <div className="bg-muted/50 p-1 rounded-xl grid grid-cols-2 gap-1 border">
+                  <button
+                    type="button"
+                    onClick={() => setTripType("one_way")}
+                    className={`py-2 text-xs font-semibold rounded-lg transition-all ${
+                      tripType === "one_way"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    One-Way Ride
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTripType("round_trip")}
+                    className={`py-2 text-xs font-semibold rounded-lg transition-all ${
+                      tripType === "round_trip"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Round-Trip (Return)
+                  </button>
+                </div>
+
+                {/* Booking Inputs */}
+                <div className="space-y-4 text-sm">
+                  {/* Dates & Times */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs font-semibold text-foreground flex items-center gap-1 mb-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-primary" />
+                        {tripType === "round_trip" ? "Departure Date *" : "Travel Date *"}
+                      </Label>
+                      <Input
+                        type="date"
+                        min={new Date().toISOString().split("T")[0]}
+                        value={pickupDate}
+                        onChange={(e) => setPickupDate(e.target.value)}
+                        className="text-xs h-9"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold text-foreground flex items-center gap-1 mb-1.5">
+                        <Clock className="w-3.5 h-3.5 text-primary" />
+                        Pickup Time *
+                      </Label>
+                      <Input
+                        type="time"
+                        value={pickupTime}
+                        onChange={(e) => setPickupTime(e.target.value)}
+                        className="text-xs h-9"
+                      />
+                    </div>
+                  </div>
+
+                  {tripType === "round_trip" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-muted/30 rounded-xl border">
+                      <div>
+                        <Label className="text-xs font-semibold text-foreground flex items-center gap-1 mb-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-primary" />
+                          Return Date *
+                        </Label>
+                        <Input
+                          type="date"
+                          min={pickupDate || new Date().toISOString().split("T")[0]}
+                          value={returnDate}
+                          onChange={(e) => setReturnDate(e.target.value)}
+                          className="text-xs h-9 bg-background"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs font-semibold text-foreground flex items-center gap-1 mb-1.5">
+                          <Clock className="w-3.5 h-3.5 text-primary" />
+                          Return Time *
+                        </Label>
+                        <Input
+                          type="time"
+                          value={returnTime}
+                          onChange={(e) => setReturnTime(e.target.value)}
+                          className="text-xs h-9 bg-background"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pickup & Drop-off Addresses */}
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-xs font-semibold text-foreground flex items-center gap-1 mb-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-primary" />
+                        Pickup Address in {bookingModalRoute.from_location} *
+                      </Label>
+                      <Input
+                        placeholder={`e.g. Hotel, Airport, or Street address in ${bookingModalRoute.from_location}`}
+                        value={pickupAddress}
+                        onChange={(e) => setPickupAddress(e.target.value)}
+                        className="text-xs h-9"
+                      />
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-semibold text-foreground flex items-center gap-1 mb-1.5">
+                        <Navigation className="w-3.5 h-3.5 text-primary" />
+                        Drop-off Address in {bookingModalRoute.to_location} *
+                      </Label>
+                      <Input
+                        placeholder={`e.g. Hotel, Resort, or Street address in ${bookingModalRoute.to_location}`}
+                        value={dropoffAddress}
+                        onChange={(e) => setDropoffAddress(e.target.value)}
+                        className="text-xs h-9"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Passengers & Luggage */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs font-semibold text-foreground flex items-center gap-1 mb-1.5">
+                        <Users className="w-3.5 h-3.5 text-primary" />
+                        Passengers
+                      </Label>
+                      <select
+                        value={passengers}
+                        onChange={(e) => setPassengers(Number(e.target.value))}
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        {[1, 2, 3, 4, 5, 6, 7].map((num) => (
+                          <option key={num} value={num}>
+                            {num} {num === 1 ? "Passenger" : "Passengers"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-semibold text-foreground flex items-center gap-1 mb-1.5">
+                        <Luggage className="w-3.5 h-3.5 text-primary" />
+                        Luggage Pieces
+                      </Label>
+                      <select
+                        value={luggageCount}
+                        onChange={(e) => setLuggageCount(Number(e.target.value))}
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        {[0, 1, 2, 3, 4, 5, 6, 8].map((num) => (
+                          <option key={num} value={num}>
+                            {num} {num === 1 ? "Bag" : "Bags"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Special Notes */}
+                  <div>
+                    <Label className="text-xs font-semibold text-foreground mb-1.5 block">
+                      Special Requests / Notes (Optional)
+                    </Label>
+                    <Textarea
+                      placeholder="Any flight numbers, landmark directions, child seats, or special timing notes..."
+                      value={specialNotes}
+                      onChange={(e) => setSpecialNotes(e.target.value)}
+                      className="text-xs min-h-[60px]"
+                    />
+                  </div>
+                </div>
+
+                {/* Included Amenities Badge Row */}
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground bg-muted/30 p-2.5 rounded-xl border">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                    <span>Private A/C Vehicle</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                    <span>Door-to-door Pickup</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                    <span>Fuel & Toll Fees Included</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                    <span>Free Waiting up to 30 mins</span>
+                  </div>
+                </div>
+
+                {/* Price Breakdown & Actions */}
+                <div className="pt-4 border-t space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs text-muted-foreground font-medium">
+                        {tripType === "round_trip" ? "Total for Round-Trip" : "Total for One-Way Ride"}
+                      </div>
+                      <div className="text-2xl font-extrabold text-foreground">
+                        {displayMoney(totalPrice, currency)}
+                      </div>
+                    </div>
+                    {tripType === "round_trip" && (
+                      <Badge variant="secondary" className="text-xs">
+                        2x Single Ride
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      type="button"
+                      disabled={isSubmittingBooking}
+                      onClick={() => handleConfirmIntercityBooking("cart")}
+                      className="text-xs font-semibold h-11"
+                    >
+                      {isSubmittingBooking ? "Saving..." : "Add to Trip Cart"}
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={isSubmittingBooking}
+                      onClick={() => handleConfirmIntercityBooking("checkout")}
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs h-11 shadow-sm"
+                    >
+                      {isSubmittingBooking ? "Processing..." : "Book & Checkout Now"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       <Footer />
     </div>
