@@ -387,6 +387,29 @@ async function getBookingOrThrow(adminClient, bookingId) {
   return attachResolvedBookingHost(adminClient, booking);
 }
 
+async function resolveBookingGuestUserId(adminClient, booking, fallbackUserId) {
+  if (booking?.guest_id) {
+    return booking.guest_id;
+  }
+  if (booking?.guest_email) {
+    try {
+      const { data: profile } = await adminClient
+        .from("profiles")
+        .select("id")
+        .ilike("email", String(booking.guest_email).trim())
+        .limit(1)
+        .maybeSingle();
+
+      if (profile?.id) {
+        return profile.id;
+      }
+    } catch (e) {
+      console.warn("[PostBooking] Profile lookup by email failed:", e);
+    }
+  }
+  return fallbackUserId || null;
+}
+
 async function ensureUserOwnsCharge(adminClient, chargeId, userId) {
   const { data: charge, error } = await adminClient
     .from("charges")
@@ -474,24 +497,27 @@ async function notifyChargeCreated({ adminClient, booking, charge, userEmail }) 
   const bookingRef = `#${String(booking.id).slice(0, 8).toUpperCase()}`;
   const title = "New post-booking charge";
   const body = `${charge.charge_type.replaceAll("_", " ")} charge of ${readableMoney(charge.amount, charge.currency)} was added to booking ${bookingRef}.`;
+  const targetUserId = booking.guest_id || charge.user_id;
 
-  await createInAppNotification(adminClient, {
-    userId: booking.guest_id,
-    title,
-    body,
-    type: "charge_created",
-    channel: "in_app",
-    data: { charge_id: charge.id, booking_id: booking.id },
-  });
+  if (targetUserId) {
+    await createInAppNotification(adminClient, {
+      userId: targetUserId,
+      title,
+      body,
+      type: "charge_created",
+      channel: "in_app",
+      data: { charge_id: charge.id, booking_id: booking.id },
+    });
 
-  await createInAppNotification(adminClient, {
-    userId: booking.guest_id,
-    title,
-    body,
-    type: "charge_created",
-    channel: "push",
-    data: { charge_id: charge.id, booking_id: booking.id },
-  });
+    await createInAppNotification(adminClient, {
+      userId: targetUserId,
+      title,
+      body,
+      type: "charge_created",
+      channel: "push",
+      data: { charge_id: charge.id, booking_id: booking.id },
+    });
+  }
 
   const html = renderMinimalEmail({
     eyebrow: "Post-booking charge",
@@ -521,24 +547,27 @@ async function notifyModification({ adminClient, booking, modification, userEmai
   const bookingRef = `#${String(booking.id).slice(0, 8).toUpperCase()}`;
   const diff = safeAmount(modification.difference || 0);
   const sign = diff > 0 ? "+" : "";
+  const targetUserId = booking.guest_id || modification.user_id;
 
-  await createInAppNotification(adminClient, {
-    userId: booking.guest_id,
-    title: "Booking modification proposal",
-    body: `A ${modification.modification_type.replaceAll("_", " ")} proposal was sent for booking ${bookingRef} (${sign}${readableMoney(diff, modification.currency)}).`,
-    type: "booking_modification",
-    channel: "in_app",
-    data: { booking_modification_id: modification.id, booking_id: booking.id },
-  });
+  if (targetUserId) {
+    await createInAppNotification(adminClient, {
+      userId: targetUserId,
+      title: "Booking modification proposal",
+      body: `A ${modification.modification_type.replaceAll("_", " ")} proposal was sent for booking ${bookingRef} (${sign}${readableMoney(diff, modification.currency)}).`,
+      type: "booking_modification",
+      channel: "in_app",
+      data: { booking_modification_id: modification.id, booking_id: booking.id },
+    });
 
-  await createInAppNotification(adminClient, {
-    userId: booking.guest_id,
-    title: "Booking modification proposal",
-    body: `A ${modification.modification_type.replaceAll("_", " ")} proposal was sent for booking ${bookingRef}.`,
-    type: "booking_modification",
-    channel: "push",
-    data: { booking_modification_id: modification.id, booking_id: booking.id },
-  });
+    await createInAppNotification(adminClient, {
+      userId: targetUserId,
+      title: "Booking modification proposal",
+      body: `A ${modification.modification_type.replaceAll("_", " ")} proposal was sent for booking ${bookingRef}.`,
+      type: "booking_modification",
+      channel: "push",
+      data: { booking_modification_id: modification.id, booking_id: booking.id },
+    });
+  }
 
   const html = renderMinimalEmail({
     eyebrow: "Booking modification",
@@ -1255,11 +1284,13 @@ async function createCharge({ auth, body }) {
     throw Object.assign(new Error("Forbidden: booking does not belong to current host"), { status: 403 });
   }
 
+  const guestUserId = await resolveBookingGuestUserId(auth.adminClient, booking, auth.userId);
+
   const { data: charge, error } = await auth.adminClient
     .from("charges")
     .insert({
       booking_id: booking.id,
-      user_id: booking.guest_id,
+      user_id: guestUserId,
       created_by: auth.userId,
       charge_type: chargeType,
       amount,
@@ -1387,9 +1418,11 @@ async function createModification({ auth, body }) {
     difference = Math.round((newPrice - oldPrice) * 100) / 100;
   }
 
+  const guestUserId = await resolveBookingGuestUserId(auth.adminClient, booking, auth.userId);
+
   const payload = {
     booking_id: booking.id,
-    user_id: booking.guest_id,
+    user_id: guestUserId,
     requested_by: auth.userId,
     admin_id: auth.userId,
     modification_type: type,
@@ -1426,7 +1459,7 @@ async function createModification({ auth, body }) {
       .from("charges")
       .insert({
         booking_id: booking.id,
-        user_id: booking.guest_id,
+        user_id: guestUserId,
         created_by: auth.userId,
         charge_type: "modification_difference",
         amount: difference,
