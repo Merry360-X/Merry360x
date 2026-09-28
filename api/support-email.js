@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import {
   buildBrevoSmtpPayload,
   escapeHtml,
@@ -8,6 +9,8 @@ import {
 } from "../lib/email-template-kit.js";
 
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@merry360x.com";
 const FINANCE_EMAIL = process.env.FINANCE_EMAIL || process.env.PAYMENTS_EMAIL || "support@merry360x.com";
 const FINANCE_NAME = process.env.FINANCE_NAME || "Finance Team";
@@ -353,6 +356,71 @@ You can track updates in your host dashboard: https://merry360x.com/host-dashboa
   return { status: 200, body: { ok: true, success: true, message: "Notification sent" } };
 }
 
+async function handlePasswordReset(body) {
+  const email = asText(body.email);
+  const redirectTo = asText(body.redirectTo, "https://merry360x.com/reset-password");
+
+  const emailValidation = validateRecipientEmail(email);
+  if (!emailValidation.ok) {
+    return { status: 400, body: { error: "Invalid email address" } };
+  }
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return { status: 200, body: { ok: true, skipped: true, reason: "missing_supabase_service_role" } };
+  }
+
+  const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+    type: "recovery",
+    email: emailValidation.email,
+    options: {
+      redirectTo,
+    },
+  });
+
+  if (error) {
+    if (error?.code === "user_not_found" || error?.message?.toLowerCase().includes("not found")) {
+      return { status: 200, body: { ok: true, skipped: true, reason: "user_not_found" } };
+    }
+    console.error("Failed to generate password recovery link:", error);
+    return { status: 400, body: { error: error.message || "Failed to generate reset link" } };
+  }
+
+  const resetLink = data?.properties?.action_link;
+  if (!resetLink) {
+    return { status: 500, body: { error: "No reset link generated" } };
+  }
+
+  const htmlContent = renderMinimalEmail({
+    eyebrow: "Account Security",
+    title: "Reset your password",
+    subtitle: "We received a request to reset the password for your Merry360X account.",
+    bodyHtml: `
+      <p style="margin: 0 0 16px; color: #374151; font-size: 15px; line-height: 1.6;">
+        Click the button below to set a new password. This link will expire in 1 hour.
+      </p>
+      <p style="margin: 0; color: #6b7280; font-size: 13px; line-height: 1.5;">
+        If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.
+      </p>
+    `,
+    ctaText: "Reset Password",
+    ctaUrl: resetLink,
+  });
+
+  const result = await sendBrevo({
+    toEmail: emailValidation.email,
+    toName: "Customer",
+    subject: "Reset your Merry360X password",
+    htmlContent,
+    tags: ["auth", "password-reset"],
+  });
+
+  return { status: 200, body: { ok: true, sentViaBrevo: true, ...result } };
+}
+
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
     return json(res, 200, { ok: true });
@@ -367,7 +435,8 @@ export default async function handler(req, res) {
     const action = asText(body.action).toLowerCase();
 
     if (action === "password_reset") {
-      return json(res, 200, { ok: true, skipped: true, reason: "use_supabase_fallback" });
+      const result = await handlePasswordReset(body);
+      return json(res, result.status, result.body);
     }
 
     if (action === "ticket_confirmation") {
