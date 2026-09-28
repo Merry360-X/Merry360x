@@ -43,6 +43,9 @@ export function uiErrorMessage(err: unknown, fallback = "Something went wrong. P
       if (msg.includes("permission denied") || msg.includes("policy")) {
         return "You don't have permission to perform this action.";
       }
+      if (normalizedMsg.includes("error sending recovery email")) {
+        return "Unable to send password recovery email. Please check your email address or contact support if the issue persists.";
+      }
       if (msg.includes("violates")) {
         return "Invalid data provided. Please check your input.";
       }

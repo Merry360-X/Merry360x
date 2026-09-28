@@ -29,7 +29,7 @@ const ForgotPassword = () => {
         description: "If this account exists, check inbox/spam for the reset link.",
       });
     } catch (error: any) {
-      logError(error, "ForgotPassword.handleSubmit");
+      logError("ForgotPassword.handleSubmit", error);
       toast({
         variant: "destructive",
         title: "Error",

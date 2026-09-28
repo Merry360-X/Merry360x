@@ -209,7 +209,7 @@ const ResetPassword = () => {
       // Redirect to login after 3 seconds
       setTimeout(() => navigate("/auth"), 3000);
     } catch (error: any) {
-      logError(error, "ResetPassword.handleSubmit");
+      logError("ResetPassword.handleSubmit", error);
       toast({
         variant: "destructive",
         title: "Error",
